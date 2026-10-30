@@ -32,6 +32,11 @@ function(ui_configure_target target)
     C_STANDARD 11
     C_STANDARD_REQUIRED ON
     C_EXTENSIONS OFF
+    # Hidden by default: only UI_API functions are exported from the shared
+    # library (see ui_shared in src/CMakeLists.txt).
+    C_VISIBILITY_PRESET hidden
+    CXX_VISIBILITY_PRESET hidden
+    VISIBILITY_INLINES_HIDDEN ON
     UI_CONFIGURED TRUE)
 
   if(MSVC)

@@ -34,3 +34,24 @@ TEST_CASE("malformed UTF-8 is rejected") {
   CHECK_FALSE(is_valid_utf8(bytes("\xE6\x97", 2)));          // Truncated 3-byte.
   CHECK_FALSE(is_valid_utf8(bytes("\xE6\x97\x28", 3)));      // Bad third byte.
 }
+
+TEST_CASE("UTF-8 and UTF-16 offsets convert both ways") {
+  using ui::foundation::utf16_to_utf8_offset;
+  using ui::foundation::utf8_to_utf16_offset;
+  // "aé日😀b": 1 + 2 + 3 + 4 + 1 bytes; 1 + 1 + 1 + 2 + 1 UTF-16 units.
+  const std::string_view text =
+      "a\xC3\xA9\xE6\x97\xA5\xF0\x9F\x98\x80"
+      "b";
+  const std::size_t utf8[] = {0, 1, 3, 6, 10, 11};
+  const std::size_t utf16[] = {0, 1, 2, 3, 5, 6};
+  for (int i = 0; i < 6; ++i) {
+    CAPTURE(i);
+    CHECK(*utf8_to_utf16_offset(text, utf8[i]) == utf16[i]);
+    CHECK(*utf16_to_utf8_offset(text, utf16[i]) == utf8[i]);
+  }
+  CHECK_FALSE(utf8_to_utf16_offset(text, 2).has_value());   // Inside "é".
+  CHECK_FALSE(utf8_to_utf16_offset(text, 12).has_value());  // Past the end.
+  CHECK_FALSE(utf16_to_utf8_offset(text, 4).has_value());   // Between surrogates.
+  CHECK_FALSE(utf16_to_utf8_offset(text, 7).has_value());   // Past the end.
+  CHECK_FALSE(utf8_to_utf16_offset(bytes("\xFF", 1), 0).has_value());
+}

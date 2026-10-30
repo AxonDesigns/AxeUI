@@ -32,8 +32,43 @@ add_library(ui_capi STATIC
   capi/capi_context.cpp
   capi/ui_capi.cpp)
 target_include_directories(ui_capi PUBLIC "${PROJECT_SOURCE_DIR}/include")
-target_link_libraries(ui_capi PUBLIC ui_foundation)
+target_link_libraries(ui_capi PUBLIC ui_platform)
 ui_configure_target(ui_capi)
+
+# Binding artifacts for the C API.
+if(EMSCRIPTEN)
+  # ES module for JavaScript/TypeScript: axeui.mjs + axeui.wasm, exporting
+  # exactly the functions listed in bindings/wasm/exported_functions.json
+  # (generated from api/ui_api.json).
+  add_executable(ui_wasm capi/capi_context.cpp capi/ui_capi.cpp)
+  target_include_directories(ui_wasm PRIVATE "${PROJECT_SOURCE_DIR}/include")
+  target_link_libraries(ui_wasm PRIVATE ui_platform)
+  ui_configure_target(ui_wasm)
+  set_target_properties(ui_wasm PROPERTIES OUTPUT_NAME axeui SUFFIX ".mjs")
+  set(ui_exports "${PROJECT_SOURCE_DIR}/bindings/wasm/exported_functions.json")
+  target_link_options(ui_wasm PRIVATE
+    --no-entry
+    -sMODULARIZE=1
+    -sEXPORT_ES6=1
+    -sEXPORT_NAME=createUiModule
+    -sENVIRONMENT=web,node
+    -sALLOW_TABLE_GROWTH=1
+    "-sEXPORTED_FUNCTIONS=@${ui_exports}"
+    "-sEXPORTED_RUNTIME_METHODS=addFunction,removeFunction,UTF8ToString,HEAPU8")
+  set_property(TARGET ui_wasm APPEND PROPERTY LINK_DEPENDS "${ui_exports}")
+else()
+  # Shared library for C and FFI bindings (Dart, Python, ...). Everything is
+  # built with hidden visibility; only UI_API (ui_*) functions are exported.
+  add_library(ui_shared SHARED capi/capi_context.cpp capi/ui_capi.cpp)
+  target_include_directories(ui_shared PUBLIC "${PROJECT_SOURCE_DIR}/include")
+  target_compile_definitions(ui_shared PRIVATE UI_BUILDING_LIBRARY PUBLIC UI_SHARED)
+  target_link_libraries(ui_shared PRIVATE ui_platform)
+  set_target_properties(ui_shared PROPERTIES OUTPUT_NAME axeui)
+  if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    target_link_options(ui_shared PRIVATE "LINKER:--exclude-libs,ALL")
+  endif()
+  ui_configure_target(ui_shared)
+endif()
 
 if(UI_ENABLE_RENDERER)
   # WGSL sources are embedded into the binary at build time.

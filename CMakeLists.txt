@@ -9,6 +9,8 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 include(ui_build_settings)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)  # For clang-tidy and editors.
+# Static libraries are also linked into the shared C API library.
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 option(UI_BUILD_TESTS "Build the AxeUI unit tests" ${PROJECT_IS_TOP_LEVEL})
 option(UI_ENABLE_RENDERER "Build the WebGPU renderer (downloads pinned Dawn)" ON)

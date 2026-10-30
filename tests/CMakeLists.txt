@@ -117,3 +117,54 @@ add_test(NAME ui_assert_death_test
     "-DEMULATOR=${CMAKE_CROSSCOMPILING_EMULATOR}"
     "-DEXPECTED_REGEX=assert_death_main\\.cpp:[0-9]+: assertion failed: deliberate assertion failure"
     -P "${PROJECT_SOURCE_DIR}/cmake/ui_expect_abort.cmake")
+
+# The shared library exports only the C API.
+# Sanitizer builds instrument the library (extra exported symbols, and it
+# cannot be loaded into a non-instrumented process such as the Dart VM), so
+# the artifact checks run in regular builds only.
+set(ui_check_artifacts TRUE)
+if(UI_ENABLE_ASAN OR UI_ENABLE_UBSAN)
+  set(ui_check_artifacts FALSE)
+endif()
+
+if(TARGET ui_shared AND NOT WIN32 AND ui_check_artifacts)
+  find_program(UI_NM NAMES nm llvm-nm)
+  if(UI_NM)
+    add_test(NAME ui_shared_exports
+      COMMAND "${CMAKE_COMMAND}" "-DLIBRARY=$<TARGET_FILE:ui_shared>" "-DNM=${UI_NM}"
+              "-DAPPLE=${APPLE}" -P "${PROJECT_SOURCE_DIR}/cmake/ui_check_exports.cmake")
+  endif()
+endif()
+
+# TypeScript binding smoke test: runs the generated wrapper against the wasm
+# ES module under Node (which strips TypeScript types natively).
+if(TARGET ui_wasm)
+  find_program(UI_NODE node)
+  if(UI_NODE)
+    add_test(NAME ui_typescript_smoke
+      COMMAND "${UI_NODE}" test/smoke.ts "$<TARGET_FILE:ui_wasm>"
+      WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}/bindings/typescript")
+  endif()
+endif()
+
+# Dart binding smoke test against the shared library (when a Dart SDK is
+# installed). `dart pub get` runs first as a fixture.
+if(TARGET ui_shared AND ui_check_artifacts)
+  find_program(UI_DART dart)
+  if(UI_DART)
+    add_test(NAME ui_dart_pub_get COMMAND "${UI_DART}" pub get
+      WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}/bindings/dart")
+    set_tests_properties(ui_dart_pub_get PROPERTIES FIXTURES_SETUP ui_dart)
+    add_test(NAME ui_dart_smoke
+      COMMAND "${UI_DART}" run bin/smoke.dart "$<TARGET_FILE:ui_shared>"
+      WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}/bindings/dart")
+    set_tests_properties(ui_dart_smoke PROPERTIES FIXTURES_REQUIRED ui_dart)
+  endif()
+endif()
+
+# include/ui/ui.h and the bindings must match api/ui_api.json.
+find_package(Python3 COMPONENTS Interpreter)
+if(Python3_FOUND)
+  add_test(NAME ui_api_generated_files_up_to_date
+    COMMAND "${Python3_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/tools/gen_api.py" --check)
+endif()

@@ -1,0 +1,38 @@
+# Fails unless every symbol a shared library exports starts with `ui_`.
+#
+#   cmake -DLIBRARY=<path> -DNM=<nm> [-DAPPLE=1] -P ui_check_exports.cmake
+
+if(APPLE)
+  execute_process(COMMAND "${NM}" -gU "${LIBRARY}" OUTPUT_VARIABLE symbols RESULT_VARIABLE result)
+else()
+  execute_process(COMMAND "${NM}" -D --defined-only "${LIBRARY}" OUTPUT_VARIABLE symbols
+                  RESULT_VARIABLE result)
+endif()
+if(NOT result EQUAL 0)
+  message(FATAL_ERROR "nm failed on ${LIBRARY}")
+endif()
+string(REPLACE "\n" ";" lines "${symbols}")
+set(exported "")
+set(unexpected "")
+foreach(line IN LISTS lines)
+  if(line MATCHES "^[0-9a-fA-F]* *[A-Za-z] +_?([^ ]+)$")
+    set(name "${CMAKE_MATCH_1}")
+    # Linker-provided markers on ELF.
+    if(name MATCHES "^(_init|_fini|_edata|_end|__bss_start)$")
+      continue()
+    endif()
+    list(APPEND exported "${name}")
+    if(NOT name MATCHES "^ui_")
+      list(APPEND unexpected "${name}")
+    endif()
+  endif()
+endforeach()
+list(LENGTH exported count)
+if(unexpected)
+  list(JOIN unexpected "\n  " text)
+  message(FATAL_ERROR "exported symbols outside the ui_ API:\n  ${text}")
+endif()
+if(count EQUAL 0)
+  message(FATAL_ERROR "no exported symbols found in ${LIBRARY}")
+endif()
+message("${count} exported symbols, all ui_*")

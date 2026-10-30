@@ -1,0 +1,10 @@
+name: axeui_bindings
+description: dart:ffi bindings for the AxeUI C API (generated from api/ui_api.json).
+publish_to: none
+version: 0.2.0
+
+environment:
+  sdk: ^3.5.0
+
+dependencies:
+  ffi: 2.1.4

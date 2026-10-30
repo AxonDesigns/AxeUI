@@ -1,0 +1,17 @@
+{
+  "name": "@axeui/bindings",
+  "private": true,
+  "type": "module",
+  "description": "TypeScript bindings for the AxeUI C API (generated from api/ui_api.json).",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p .",
+    "smoke": "node test/smoke.ts"
+  },
+  "devDependencies": {
+    "@types/node": "24.3.0",
+    "typescript": "5.9.2"
+  }
+}

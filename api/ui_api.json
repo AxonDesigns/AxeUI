@@ -1,0 +1,287 @@
+{
+  "comment": "Source of truth for the AxeUI C API. include/ui/ui.h and the TypeScript/Dart bindings are generated from this file by tools/gen_api.py; CI fails if they are out of date. See docs/architecture.md, 'Language bindings'.",
+  "prefix": "ui",
+  "version": {"major": 0, "minor": 2, "patch": 0},
+
+  "enums": [
+    {
+      "name": "error_code",
+      "doc": "Result of every fallible function. Mirrors ui::foundation::ErrorCode.",
+      "values": [
+        {"name": "OK", "value": 0, "doc": "Success."},
+        {"name": "ERROR_INVALID_ARGUMENT", "value": 1},
+        {"name": "ERROR_OUT_OF_MEMORY", "value": 2},
+        {"name": "ERROR_INVALID_HANDLE", "value": 3, "doc": "Null handle, or one never issued."},
+        {"name": "ERROR_STALE_HANDLE", "value": 4, "doc": "Its object has been destroyed."},
+        {"name": "ERROR_WRONG_HANDLE_TYPE", "value": 5, "doc": "Refers to a different kind of object."},
+        {"name": "ERROR_CAPACITY_EXCEEDED", "value": 6},
+        {"name": "ERROR_UNSUPPORTED", "value": 7},
+        {"name": "ERROR_UNAVAILABLE", "value": 8},
+        {"name": "ERROR_INVALID_STATE", "value": 9},
+        {"name": "ERROR_INTERNAL", "value": 10},
+        {"name": "ERROR_GPU", "value": 11},
+        {"name": "ERROR_DEVICE_LOST", "value": 12},
+        {"name": "ERROR_WRONG_THREAD", "value": 13, "doc": "Called from a thread that does not own the context."}
+      ]
+    },
+    {
+      "name": "log_level",
+      "values": [
+        {"name": "LOG_TRACE", "value": 0},
+        {"name": "LOG_DEBUG", "value": 1},
+        {"name": "LOG_INFO", "value": 2},
+        {"name": "LOG_WARNING", "value": 3},
+        {"name": "LOG_ERROR", "value": 4}
+      ]
+    },
+    {
+      "name": "event_type",
+      "doc": "Engine-to-host events, drained with ui_context_poll_event().",
+      "values": [
+        {"name": "EVENT_NONE", "value": 0, "doc": "The queue is empty."},
+        {"name": "EVENT_LOG", "value": 1, "doc": "A diagnostic (when no log callback is set): level, code, message."},
+        {"name": "EVENT_FRAME_REQUESTED", "value": 2, "doc": "The surface wants a frame: call ui_surface_frame() at its next vsync."},
+        {"name": "EVENT_WAKE", "value": 3, "doc": "ui_context_wake() was called."}
+      ]
+    }
+  ],
+
+  "structs": [
+    {
+      "name": "context_desc",
+      "direction": "in",
+      "doc": "Parameters for ui_context_create().",
+      "fields": [
+        {"name": "size", "type": "uint32", "doc": "sizeof(ui_context_desc)."},
+        {"name": "min_log_level", "type": "enum:log_level", "doc": "Diagnostics below this level are dropped."}
+      ]
+    },
+    {
+      "name": "surface_desc",
+      "direction": "in",
+      "doc": "A host-owned drawable area (window, view, canvas) registered with ui_surface_create().",
+      "fields": [
+        {"name": "size", "type": "uint32", "doc": "sizeof(ui_surface_desc)."},
+        {"name": "width", "type": "uint32", "doc": "Physical pixels."},
+        {"name": "height", "type": "uint32", "doc": "Physical pixels."},
+        {"name": "scale", "type": "float32", "doc": "Physical pixels per logical pixel, in [1/64, 64]."},
+        {"name": "refresh_rate_hz", "type": "float32", "doc": "Display refresh rate; 0 if unknown."}
+      ]
+    },
+    {
+      "name": "allocation_stats",
+      "direction": "out",
+      "doc": "Memory allocated by a context. The caller sets size; the library fills the rest.",
+      "fields": [
+        {"name": "size", "type": "uint32", "doc": "sizeof(ui_allocation_stats), set by the caller."},
+        {"name": "reserved", "type": "uint32", "doc": "Must be ignored."},
+        {"name": "live_allocations", "type": "uint64"},
+        {"name": "live_bytes", "type": "uint64"},
+        {"name": "peak_allocations", "type": "uint64"},
+        {"name": "peak_bytes", "type": "uint64"},
+        {"name": "total_allocations", "type": "uint64"}
+      ]
+    },
+    {
+      "name": "event",
+      "direction": "out",
+      "doc": "One engine-to-host event. The caller sets size; the library fills the rest.",
+      "fields": [
+        {"name": "size", "type": "uint32", "doc": "sizeof(ui_event), set by the caller."},
+        {"name": "type", "type": "enum:event_type"},
+        {"name": "code", "type": "enum:error_code", "doc": "EVENT_LOG: the error code (UI_OK for information)."},
+        {"name": "level", "type": "enum:log_level", "doc": "EVENT_LOG: severity."},
+        {"name": "surface", "type": "handle", "doc": "EVENT_FRAME_REQUESTED: the surface."},
+        {"name": "message", "type": "string_ptr", "nullable": true,
+         "ownership": "Owned by the context; valid until the next ui_context_poll_event() or ui_context_destroy().",
+         "doc": "EVENT_LOG: UTF-8 text of message_length bytes (not NUL-terminated); NULL otherwise."},
+        {"name": "message_length", "type": "uint32"},
+        {"name": "reserved", "type": "uint32", "doc": "Must be ignored."}
+      ]
+    }
+  ],
+
+  "callbacks": [
+    {
+      "name": "log_callback",
+      "doc": "Receives diagnostics, including invalid handles passed to the API. Called on the owning thread, possibly while the engine is dispatching.",
+      "params": [
+        {"name": "user_data", "type": "user_data"},
+        {"name": "level", "type": "enum:log_level"},
+        {"name": "code", "type": "enum:error_code"},
+        {"name": "message", "type": "string_ptr", "ownership": "Valid only during the call.", "doc": "UTF-8, message_length bytes, not NUL-terminated."},
+        {"name": "message_length", "type": "uint32"}
+      ]
+    },
+    {
+      "name": "event_callback",
+      "doc": "Optional convenience: receives events immediately instead of queuing them for ui_context_poll_event(). Called on the owning thread, possibly while the engine is dispatching.",
+      "params": [
+        {"name": "user_data", "type": "user_data"},
+        {"name": "event", "type": "const_struct_ptr:event", "ownership": "Valid only during the call."}
+      ]
+    },
+    {
+      "name": "wake_callback",
+      "doc": "Called by ui_context_wake() on the calling thread, so the host can interrupt its own event wait. Must be thread-safe and must not call the API.",
+      "params": [
+        {"name": "user_data", "type": "user_data"}
+      ]
+    }
+  ],
+
+  "functions": [
+    {
+      "name": "get_version",
+      "thread": "any",
+      "doc": "The version of the linked library, packed like UI_MAKE_VERSION. Compare with UI_VERSION to detect a header/library mismatch.",
+      "params": [],
+      "returns": "uint32"
+    },
+    {
+      "name": "error_code_name",
+      "thread": "any",
+      "doc": "Stable name of an error code (\"UI_ERROR_STALE_HANDLE\"); \"UI_ERROR_UNKNOWN\" for unknown values.",
+      "params": [{"name": "code", "type": "enum:error_code"}],
+      "returns": "cstring",
+      "returns_ownership": "Static; never NULL, never freed."
+    },
+    {
+      "name": "context_create",
+      "thread": "any",
+      "doc": "Creates a context. The calling thread becomes its owner: every other function taking this context must be called on that thread, except ui_context_wake().",
+      "params": [
+        {"name": "desc", "type": "const_struct_ptr:context_desc", "nullable": true, "doc": "NULL for defaults."},
+        {"name": "out_context", "type": "out:context", "doc": "Receives the context on success."}
+      ],
+      "returns": "enum:error_code"
+    },
+    {
+      "name": "context_destroy",
+      "doc": "Destroys a context and everything in it. NULL is ignored. Must not be called from inside a callback.",
+      "params": [{"name": "context", "type": "context", "nullable": true}],
+      "returns": "void"
+    },
+    {
+      "name": "context_set_log_callback",
+      "doc": "Routes diagnostics to callback (NULL: they are queued as UI_EVENT_LOG instead).",
+      "params": [
+        {"name": "context", "type": "context"},
+        {"name": "callback", "type": "callback:log_callback", "nullable": true},
+        {"name": "user_data", "type": "user_data"},
+        {"name": "min_level", "type": "enum:log_level"}
+      ],
+      "returns": "enum:error_code"
+    },
+    {
+      "name": "context_set_event_callback",
+      "doc": "Delivers events to callback immediately instead of queuing them (NULL: queue).",
+      "params": [
+        {"name": "context", "type": "context"},
+        {"name": "callback", "type": "callback:event_callback", "nullable": true},
+        {"name": "user_data", "type": "user_data"}
+      ],
+      "returns": "enum:error_code"
+    },
+    {
+      "name": "context_set_wake_callback",
+      "doc": "Sets the host's thread-safe wake-up hook used by ui_context_wake(). Set it before other threads may call ui_context_wake().",
+      "params": [
+        {"name": "context", "type": "context"},
+        {"name": "callback", "type": "callback:wake_callback", "nullable": true},
+        {"name": "user_data", "type": "user_data"}
+      ],
+      "returns": "enum:error_code"
+    },
+    {
+      "name": "context_poll_event",
+      "doc": "Removes the oldest queued event into out_event. Sets out_event->type to UI_EVENT_NONE when the queue is empty.",
+      "params": [
+        {"name": "context", "type": "context"},
+        {"name": "out_event", "type": "out_struct_ptr:event"}
+      ],
+      "returns": "enum:error_code"
+    },
+    {
+      "name": "context_wake",
+      "thread": "any",
+      "doc": "Thread-safe: queues one UI_EVENT_WAKE (coalesced) and calls the wake callback. The only function that may be called from any thread.",
+      "params": [{"name": "context", "type": "context"}],
+      "returns": "enum:error_code"
+    },
+    {
+      "name": "context_get_allocation_stats",
+      "doc": "Memory currently and historically allocated by the context.",
+      "params": [
+        {"name": "context", "type": "const_context"},
+        {"name": "out_stats", "type": "out_struct_ptr:allocation_stats"}
+      ],
+      "returns": "enum:error_code"
+    },
+    {
+      "name": "surface_create",
+      "doc": "Registers a host-owned surface. The engine will ask for its first frame with UI_EVENT_FRAME_REQUESTED.",
+      "params": [
+        {"name": "context", "type": "context"},
+        {"name": "desc", "type": "const_struct_ptr:surface_desc"},
+        {"name": "out_surface", "type": "out:handle"}
+      ],
+      "returns": "enum:error_code"
+    },
+    {
+      "name": "surface_destroy",
+      "doc": "Unregisters a surface. Called during dispatch (from a callback), destruction is deferred until dispatch ends; the handle is stale immediately.",
+      "params": [
+        {"name": "context", "type": "context"},
+        {"name": "surface", "type": "handle"}
+      ],
+      "returns": "enum:error_code"
+    },
+    {
+      "name": "surface_resize",
+      "doc": "Reports a new physical size and scale factor.",
+      "params": [
+        {"name": "context", "type": "context"},
+        {"name": "surface", "type": "handle"},
+        {"name": "width", "type": "uint32"},
+        {"name": "height", "type": "uint32"},
+        {"name": "scale", "type": "float32"}
+      ],
+      "returns": "enum:error_code"
+    },
+    {
+      "name": "surface_frame",
+      "doc": "Delivers the frame requested with UI_EVENT_FRAME_REQUESTED. timestamp_ns is the host's monotonic clock.",
+      "params": [
+        {"name": "context", "type": "context"},
+        {"name": "surface", "type": "handle"},
+        {"name": "timestamp_ns", "type": "int64"}
+      ],
+      "returns": "enum:error_code"
+    },
+    {
+      "name": "utf8_to_utf16_offset",
+      "thread": "any",
+      "doc": "Converts a byte offset into UTF-8 text to the matching UTF-16 code-unit offset. Fails with UI_ERROR_INVALID_ARGUMENT for invalid UTF-8 or an offset that is not on a code-point boundary.",
+      "params": [
+        {"name": "text", "type": "string_ptr", "ownership": "Borrowed for the call.", "doc": "UTF-8, text_length bytes."},
+        {"name": "text_length", "type": "uint32"},
+        {"name": "utf8_offset", "type": "uint32"},
+        {"name": "out_utf16_offset", "type": "out:uint32"}
+      ],
+      "returns": "enum:error_code"
+    },
+    {
+      "name": "utf16_to_utf8_offset",
+      "thread": "any",
+      "doc": "Converts a UTF-16 code-unit offset to the matching byte offset into UTF-8 text. Fails with UI_ERROR_INVALID_ARGUMENT for invalid UTF-8 or an offset inside a surrogate pair or past the end.",
+      "params": [
+        {"name": "text", "type": "string_ptr", "ownership": "Borrowed for the call.", "doc": "UTF-8, text_length bytes."},
+        {"name": "text_length", "type": "uint32"},
+        {"name": "utf16_offset", "type": "uint32"},
+        {"name": "out_utf8_offset", "type": "out:uint32"}
+      ],
+      "returns": "enum:error_code"
+    }
+  ]
+}

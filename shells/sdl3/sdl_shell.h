@@ -67,7 +67,7 @@ class SdlWindow final : public platform::Surface {
 
   SdlShell* shell_;
   SDL_Window* window_;
-  void* metal_view_;  // SDL_MetalView on macOS, else null.
+  [[maybe_unused]] void* metal_view_;  // SDL_MetalView on macOS, else null.
   std::uint32_t window_id_;
   platform::Core* core_ = nullptr;
   platform::SurfaceId id_;

@@ -55,4 +55,51 @@ bool is_valid_utf8(std::string_view text) noexcept {
   return true;
 }
 
+namespace {
+
+// Byte length of the code point starting with `lead` (text already valid).
+std::size_t sequence_length(std::uint8_t lead) noexcept {
+  if (lead < 0x80u) return 1;
+  if (lead < 0xE0u) return 2;
+  if (lead < 0xF0u) return 3;
+  return 4;
+}
+
+}  // namespace
+
+Result<std::size_t> utf8_to_utf16_offset(std::string_view text, std::size_t utf8_offset) noexcept {
+  if (!is_valid_utf8(text) || utf8_offset > text.size()) {
+    return fail(Error{ErrorCode::InvalidArgument, "invalid UTF-8 text or offset"});
+  }
+  std::size_t bytes = 0;
+  std::size_t units = 0;
+  while (bytes < utf8_offset) {
+    const std::size_t length = sequence_length(static_cast<std::uint8_t>(text[bytes]));
+    bytes += length;
+    units += length == 4 ? 2u : 1u;  // Supplementary planes need a surrogate pair.
+  }
+  if (bytes != utf8_offset) {
+    return fail(Error{ErrorCode::InvalidArgument, "UTF-8 offset is inside a code point"});
+  }
+  return units;
+}
+
+Result<std::size_t> utf16_to_utf8_offset(std::string_view text, std::size_t utf16_offset) noexcept {
+  if (!is_valid_utf8(text)) {
+    return fail(Error{ErrorCode::InvalidArgument, "invalid UTF-8 text"});
+  }
+  std::size_t bytes = 0;
+  std::size_t units = 0;
+  while (units < utf16_offset && bytes < text.size()) {
+    const std::size_t length = sequence_length(static_cast<std::uint8_t>(text[bytes]));
+    bytes += length;
+    units += length == 4 ? 2u : 1u;
+  }
+  if (units != utf16_offset) {
+    return fail(Error{ErrorCode::InvalidArgument,
+                      "UTF-16 offset is past the end or inside a surrogate pair"});
+  }
+  return bytes;
+}
+
 }  // namespace ui::foundation
