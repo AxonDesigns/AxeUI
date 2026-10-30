@@ -50,10 +50,20 @@ ui_add_test(ui_display_list_tests
   LIBRARIES ui_display_list)
 
 if(UI_ENABLE_RENDERER)
+  # Test-only PNG I/O (stb, vendored); never linked into engine libraries.
+  add_library(ui_golden STATIC render/golden.cpp)
+  target_include_directories(ui_golden PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
+  target_include_directories(ui_golden SYSTEM PRIVATE "${PROJECT_SOURCE_DIR}/third_party/stb")
+  target_compile_definitions(ui_golden PRIVATE
+    "UI_GOLDEN_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}/goldens\""
+    "UI_GOLDEN_OUTPUT_DIR=\"${CMAKE_BINARY_DIR}/golden-failures\"")
+  ui_configure_target(ui_golden)
+
   ui_add_test(ui_render_tests
     SOURCES
+      render/golden_test.cpp
       render/renderer_test.cpp
-    LIBRARIES ui_render)
+    LIBRARIES ui_frame ui_golden)
 
   # Golden reference configuration: on Linux, point the Vulkan loader at Mesa
   # lavapipe only, so render tests never depend on the machine's GPU.

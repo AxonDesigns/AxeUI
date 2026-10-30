@@ -104,6 +104,12 @@ class Renderer final {
   // Releases the target of a surface that went away.
   void remove_surface(platform::SurfaceId id);
 
+  // Copies the last frame rendered for a headless surface (one without a
+  // native handle) into `out`, as tightly packed RGBA8 rows (sRGB-encoded,
+  // premultiplied). Native only.
+  [[nodiscard]] foundation::Result<void> read_back(platform::SurfaceId id,
+                                                   foundation::Vector<std::uint8_t>& out);
+
   // Color path chosen for a configured surface (Unsupported if none yet).
   [[nodiscard]] foundation::Result<ColorOutputPath> color_output_path(platform::SurfaceId id) const;
 
@@ -138,6 +144,17 @@ class Renderer final {
     std::uint32_t next = 0;
   };
 
+  // An offscreen color target plus its readback buffer.
+  struct Offscreen {
+    wgpu::Texture texture;
+    wgpu::TextureView view;
+    wgpu::Buffer readback;
+    std::uint32_t width = 0;
+    std::uint32_t height = 0;
+    std::uint32_t padded_row = 0;  // Readback rows are padded to 256 bytes.
+    FrameResources frame;
+  };
+
   struct SurfaceTarget {
     platform::SurfaceId id;
     platform::NativeSurfaceHandle native;
@@ -150,22 +167,16 @@ class Renderer final {
     wgpu::TextureFormat view_format = wgpu::TextureFormat::Undefined;  // Render format.
     ColorOutputPath color_path = ColorOutputPath::SrgbFormat;
     FrameResources frame;
+    // Surfaces without a native handle (NullSurface, tools, tests) render
+    // into this texture instead of a swapchain.
+    bool headless = false;
+    Offscreen offscreen;
   };
 
   struct PipelineEntry {
     wgpu::TextureFormat format;
     bool encode_srgb;
     wgpu::RenderPipeline pipeline;
-  };
-
-  struct Offscreen {
-    wgpu::Texture texture;
-    wgpu::TextureView view;
-    wgpu::Buffer readback;
-    std::uint32_t width = 0;
-    std::uint32_t height = 0;
-    std::uint32_t padded_row = 0;
-    FrameResources frame;
   };
 
   [[nodiscard]] foundation::Result<void> initialize();
@@ -184,10 +195,16 @@ class Renderer final {
   [[nodiscard]] foundation::Result<SurfaceTarget*> surface_target(
       platform::SurfaceId id, const platform::NativeSurfaceHandle& native);
   [[nodiscard]] foundation::Result<void> create_wgpu_surface(SurfaceTarget& target);
+  [[nodiscard]] foundation::Result<void> ensure_offscreen(Offscreen& offscreen, std::uint32_t width,
+                                                          std::uint32_t height);
+  [[nodiscard]] foundation::Result<void> read_texture(Offscreen& offscreen,
+                                                      foundation::Vector<std::uint8_t>& out);
+  [[nodiscard]] foundation::Result<PresentOutcome> render_headless(
+      SurfaceTarget& target, std::uint32_t width, std::uint32_t height,
+      const display_list::DisplayList& list, foundation::LinearRgbaPremul clear);
   [[nodiscard]] foundation::Result<void> configure(SurfaceTarget& target, std::uint32_t width,
                                                    std::uint32_t height);
 
-  foundation::MemoryResource* memory_;
   const foundation::Logger* logger_;
   RendererOptions options_;
   GpuContext gpu_;

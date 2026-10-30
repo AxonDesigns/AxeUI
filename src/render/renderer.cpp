@@ -66,8 +66,7 @@ foundation::Result<foundation::UniquePtr<Renderer>> Renderer::create(
 
 Renderer::Renderer(foundation::MemoryResource& memory, const foundation::Logger& logger,
                    const RendererOptions& options)
-    : memory_(&memory),
-      logger_(&logger),
+    : logger_(&logger),
       options_(options),
       gpu_(logger),
       textures_(gpu_, memory),
@@ -96,6 +95,7 @@ foundation::Result<void> Renderer::ensure_device() {
     UI_TRY(create_device_objects());
     for (SurfaceTarget& target : surfaces_) {
       target.frame = FrameResources{};
+      target.offscreen = Offscreen{};
       target.configured = false;  // Reconfigure with the new device.
     }
     offscreen_ = Offscreen{};
@@ -299,64 +299,54 @@ void Renderer::encode_pass(const wgpu::CommandEncoder& encoder, const wgpu::Text
 
 // --- Headless ---------------------------------------------------------------------
 
-foundation::Result<void> Renderer::render_offscreen(const DisplayList& list, std::uint32_t width,
-                                                    std::uint32_t height,
-                                                    foundation::LinearRgbaPremul clear,
-                                                    foundation::Vector<std::uint8_t>* readback) {
-  if (width == 0 || height == 0 || width > 8192 || height > 8192) {
-    return foundation::fail(Error{ErrorCode::InvalidArgument, "offscreen size must be 1..8192"});
+foundation::Result<void> Renderer::ensure_offscreen(Offscreen& offscreen, std::uint32_t width,
+                                                    std::uint32_t height) {
+  if (offscreen.width == width && offscreen.height == height && offscreen.texture != nullptr) {
+    return {};
   }
-  UI_TRY(ensure_device());
   const wgpu::Device& device = gpu_.device();
-  textures_.flush();
-
-  if (offscreen_.width != width || offscreen_.height != height) {
-    wgpu::TextureDescriptor desc{};
-    desc.label = "AxeUI offscreen";
-    desc.size = {width, height, 1};
-    desc.format = kOffscreenFormat;
-    desc.usage = wgpu::TextureUsage::RenderAttachment | wgpu::TextureUsage::CopySrc;
-    offscreen_.texture = device.CreateTexture(&desc);
-    offscreen_.view = offscreen_.texture.CreateView();
-    // Buffer copies need rows padded to 256 bytes.
-    offscreen_.padded_row = (width * 4u + 255u) & ~255u;
-    wgpu::BufferDescriptor buffer_desc{};
-    buffer_desc.label = "AxeUI readback";
-    buffer_desc.size = static_cast<std::uint64_t>(offscreen_.padded_row) * height;
-    buffer_desc.usage = wgpu::BufferUsage::MapRead | wgpu::BufferUsage::CopyDst;
-    offscreen_.readback = device.CreateBuffer(&buffer_desc);
-    offscreen_.width = width;
-    offscreen_.height = height;
+  wgpu::TextureDescriptor desc{};
+  desc.label = "AxeUI offscreen";
+  desc.size = {width, height, 1};
+  desc.format = kOffscreenFormat;
+  desc.usage = wgpu::TextureUsage::RenderAttachment | wgpu::TextureUsage::CopySrc;
+  offscreen.texture = device.CreateTexture(&desc);
+  offscreen.view = offscreen.texture.CreateView();
+  // Buffer copies need rows padded to 256 bytes.
+  offscreen.padded_row = (width * 4u + 255u) & ~255u;
+  wgpu::BufferDescriptor buffer_desc{};
+  buffer_desc.label = "AxeUI readback";
+  buffer_desc.size = static_cast<std::uint64_t>(offscreen.padded_row) * height;
+  buffer_desc.usage = wgpu::BufferUsage::MapRead | wgpu::BufferUsage::CopyDst;
+  offscreen.readback = device.CreateBuffer(&buffer_desc);
+  offscreen.width = width;
+  offscreen.height = height;
+  if (offscreen.texture == nullptr || offscreen.readback == nullptr) {
+    offscreen.texture = nullptr;
+    return foundation::fail(Error{ErrorCode::GpuError, "offscreen target creation failed"});
   }
+  return {};
+}
 
-  auto pipe = pipeline(kOffscreenFormat, false);
-  if (!pipe) {
-    return foundation::fail(std::move(pipe).error());
-  }
-  std::uint32_t slot = 0;
-  UI_TRY(prepare_frame(offscreen_.frame, list, width, height, slot));
-
-  const wgpu::CommandEncoder encoder = device.CreateCommandEncoder();
-  encode_pass(encoder, offscreen_.view, **pipe, offscreen_.frame, slot, list, clear);
-  if (readback != nullptr) {
-    wgpu::TexelCopyTextureInfo source{};
-    source.texture = offscreen_.texture;
-    wgpu::TexelCopyBufferInfo destination{};
-    destination.buffer = offscreen_.readback;
-    destination.layout.bytesPerRow = offscreen_.padded_row;
-    destination.layout.rowsPerImage = height;
-    const wgpu::Extent3D extent{width, height, 1};
-    encoder.CopyTextureToBuffer(&source, &destination, &extent);
-  }
+foundation::Result<void> Renderer::read_texture(Offscreen& offscreen,
+                                                foundation::Vector<std::uint8_t>& out) {
+  const std::uint32_t width = offscreen.width;
+  const std::uint32_t height = offscreen.height;
+  const wgpu::CommandEncoder encoder = gpu_.device().CreateCommandEncoder();
+  wgpu::TexelCopyTextureInfo source{};
+  source.texture = offscreen.texture;
+  wgpu::TexelCopyBufferInfo destination{};
+  destination.buffer = offscreen.readback;
+  destination.layout.bytesPerRow = offscreen.padded_row;
+  destination.layout.rowsPerImage = height;
+  const wgpu::Extent3D extent{width, height, 1};
+  encoder.CopyTextureToBuffer(&source, &destination, &extent);
   const wgpu::CommandBuffer commands = encoder.Finish();
   gpu_.queue().Submit(1, &commands);
 
-  if (readback == nullptr) {
-    return {};
-  }
   MapResult map_result;
-  const std::size_t size = static_cast<std::size_t>(offscreen_.padded_row) * height;
-  const wgpu::Future future = offscreen_.readback.MapAsync(
+  const std::size_t size = static_cast<std::size_t>(offscreen.padded_row) * height;
+  const wgpu::Future future = offscreen.readback.MapAsync(
       wgpu::MapMode::Read, 0, size, wgpu::CallbackMode::WaitAnyOnly,
       [](wgpu::MapAsyncStatus status, wgpu::StringView, MapResult* result) {
         result->ok = status == wgpu::MapAsyncStatus::Success;
@@ -367,15 +357,72 @@ foundation::Result<void> Renderer::render_offscreen(const DisplayList& list, std
     return foundation::fail(Error{ErrorCode::GpuError, "readback mapping failed"});
   }
   const auto* mapped =
-      static_cast<const std::uint8_t*>(offscreen_.readback.GetConstMappedRange(0, size));
+      static_cast<const std::uint8_t*>(offscreen.readback.GetConstMappedRange(0, size));
   const std::size_t row_bytes = static_cast<std::size_t>(width) * 4u;
-  readback->resize(row_bytes * height);
+  out.resize(row_bytes * height);
   for (std::uint32_t y = 0; y < height; ++y) {
-    std::memcpy(readback->data() + row_bytes * y,
-                mapped + static_cast<std::size_t>(offscreen_.padded_row) * y, row_bytes);
+    std::memcpy(out.data() + row_bytes * y,
+                mapped + static_cast<std::size_t>(offscreen.padded_row) * y, row_bytes);
   }
-  offscreen_.readback.Unmap();
+  offscreen.readback.Unmap();
   return {};
+}
+
+foundation::Result<void> Renderer::render_offscreen(const DisplayList& list, std::uint32_t width,
+                                                    std::uint32_t height,
+                                                    foundation::LinearRgbaPremul clear,
+                                                    foundation::Vector<std::uint8_t>* readback) {
+  if (width == 0 || height == 0 || width > 8192 || height > 8192) {
+    return foundation::fail(Error{ErrorCode::InvalidArgument, "offscreen size must be 1..8192"});
+  }
+  UI_TRY(ensure_device());
+  textures_.flush();
+  UI_TRY(ensure_offscreen(offscreen_, width, height));
+  auto pipe = pipeline(kOffscreenFormat, false);
+  if (!pipe) {
+    return foundation::fail(std::move(pipe).error());
+  }
+  std::uint32_t slot = 0;
+  UI_TRY(prepare_frame(offscreen_.frame, list, width, height, slot));
+  const wgpu::CommandEncoder encoder = gpu_.device().CreateCommandEncoder();
+  encode_pass(encoder, offscreen_.view, **pipe, offscreen_.frame, slot, list, clear);
+  const wgpu::CommandBuffer commands = encoder.Finish();
+  gpu_.queue().Submit(1, &commands);
+  if (readback == nullptr) {
+    return {};
+  }
+  return read_texture(offscreen_, *readback);
+}
+
+foundation::Result<PresentOutcome> Renderer::render_headless(SurfaceTarget& target,
+                                                             std::uint32_t width,
+                                                             std::uint32_t height,
+                                                             const DisplayList& list,
+                                                             foundation::LinearRgbaPremul clear) {
+  UI_TRY(ensure_offscreen(target.offscreen, width, height));
+  auto pipe = pipeline(kOffscreenFormat, false);
+  if (!pipe) {
+    return foundation::fail(std::move(pipe).error());
+  }
+  std::uint32_t slot = 0;
+  UI_TRY(prepare_frame(target.frame, list, width, height, slot));
+  const wgpu::CommandEncoder encoder = gpu_.device().CreateCommandEncoder();
+  encode_pass(encoder, target.offscreen.view, **pipe, target.frame, slot, list, clear);
+  const wgpu::CommandBuffer commands = encoder.Finish();
+  gpu_.queue().Submit(1, &commands);
+  target.width = width;
+  target.height = height;
+  return PresentOutcome::Presented;
+}
+
+foundation::Result<void> Renderer::read_back(platform::SurfaceId id,
+                                             foundation::Vector<std::uint8_t>& out) {
+  for (SurfaceTarget& target : surfaces_) {
+    if (target.id == id && target.headless && target.offscreen.texture != nullptr) {
+      return read_texture(target.offscreen, out);
+    }
+  }
+  return foundation::fail(Error{ErrorCode::InvalidState, "no headless frame for this surface"});
 }
 
 // --- Surfaces ---------------------------------------------------------------------
@@ -386,6 +433,10 @@ foundation::Result<Renderer::SurfaceTarget*> Renderer::surface_target(
     if (target.id == id) {
       if (!(target.native == native)) {
         // The shell recreated its native window surface.
+        if (native.is_none() || target.headless) {
+          return foundation::fail(Error{ErrorCode::InvalidArgument,
+                                        "a surface cannot switch between headless and native"});
+        }
         target.native = native;
         target.configured = false;
         target.surface = nullptr;
@@ -397,6 +448,10 @@ foundation::Result<Renderer::SurfaceTarget*> Renderer::surface_target(
   SurfaceTarget& target = surfaces_.emplace_back();
   target.id = id;
   target.native = native;
+  target.headless = native.is_none();
+  if (target.headless) {
+    return &target;
+  }
   if (auto created = create_wgpu_surface(target); !created) {
     surfaces_.pop_back();
     return foundation::fail(std::move(created).error());
@@ -575,6 +630,9 @@ foundation::Result<PresentOutcome> Renderer::render_surface(
     return foundation::fail(std::move(found).error());
   }
   SurfaceTarget& target = **found;
+  if (target.headless) {
+    return render_headless(target, width, height, list, clear);
+  }
   if (!target.configured || target.reconfigure || target.width != width ||
       target.height != height) {
     UI_TRY(configure(target, width, height));

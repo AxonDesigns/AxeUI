@@ -59,4 +59,10 @@ if(UI_ENABLE_RENDERER)
     "${ui_shader_cpp}")
   target_link_libraries(ui_render PUBLIC ui_display_list ui_platform ui::webgpu)
   ui_configure_target(ui_render)
+
+  # Orchestration between core, application paint and renderer.
+  add_library(ui_frame STATIC
+    frame/frame_driver.cpp)
+  target_link_libraries(ui_frame PUBLIC ui_render)
+  ui_configure_target(ui_frame)
 endif()
