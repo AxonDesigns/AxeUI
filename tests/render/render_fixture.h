@@ -16,23 +16,21 @@ namespace ui::test {
 // Creates a renderer for tests, or returns nullptr (and says why) when this
 // machine has no usable adapter.
 //
-// Prefers a software adapter so results do not depend on the GPU. On Linux,
-// CTest points the Vulkan loader at Mesa lavapipe (the golden reference), so
-// the default Vulkan adapter is lavapipe. Elsewhere the implementation's
-// fallback adapter is tried first (WARP on Windows), then the default one.
+// Prefers a software adapter so results do not depend on the GPU:
+// - Linux: CTest points the Vulkan loader at Mesa lavapipe (the golden
+//   reference), so the Vulkan adapter is lavapipe;
+// - Windows: Dawn's fallback adapter (WARP, part of every Windows 10+);
+// - elsewhere (macOS): the default adapter, since Dawn has no software
+//   adapter there.
 inline foundation::UniquePtr<render::Renderer> make_renderer(foundation::MemoryResource& memory,
                                                              const foundation::Logger& logger) {
   render::RendererOptions options;
 #if defined(__linux__)
   options.gpu.backend = wgpu::BackendType::Vulkan;
-#else
+#elif defined(_WIN32)
   options.gpu.force_software = true;
 #endif
   auto renderer = render::Renderer::create(memory, logger, options);
-  if (!renderer && options.gpu.force_software) {
-    options.gpu.force_software = false;
-    renderer = render::Renderer::create(memory, logger, options);
-  }
   if (!renderer) {
     MESSAGE("skipping: no WebGPU adapter (" << std::string_view(renderer.error().message) << ")");
     return foundation::UniquePtr<render::Renderer>(
