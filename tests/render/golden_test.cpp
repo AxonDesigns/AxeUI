@@ -5,6 +5,8 @@
 
 #include "render/golden.h"
 
+#include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <string>
 
@@ -44,8 +46,8 @@ void check_scene(MemoryResource& memory, Renderer& renderer, const std::string& 
   CAPTURE(name);
   const ScaleFactor factor{scale};
   const PhysicalSize physical = to_physical(logical, factor);
-  const auto width = static_cast<std::uint32_t>(physical.width + 0.5f);
-  const auto height = static_cast<std::uint32_t>(physical.height + 0.5f);
+  const auto width = static_cast<std::uint32_t>(std::lround(physical.width));
+  const auto height = static_cast<std::uint32_t>(std::lround(physical.height));
   DisplayList list(memory);
   DisplayListBuilder builder(list, memory, {static_cast<float>(width), static_cast<float>(height)},
                              factor);
@@ -75,7 +77,7 @@ UniquePtr<Renderer> golden_renderer(MemoryResource& memory, const Logger& logger
 }
 
 std::string scale_suffix(float scale) {
-  return "_scale_" + std::to_string(static_cast<int>(scale * 100.0f + 0.5f));
+  return "_scale_" + std::to_string(static_cast<int>(std::lround(scale * 100.0f)));
 }
 
 // A procedural RGBA8 image with straight alpha: a 2x2 checker of opaque
@@ -83,7 +85,7 @@ std::string scale_suffix(float scale) {
 void make_test_image(std::uint8_t* pixels, std::uint32_t size) {
   for (std::uint32_t y = 0; y < size; ++y) {
     for (std::uint32_t x = 0; x < size; ++x) {
-      std::uint8_t* p = pixels + (y * size + x) * 4;
+      std::uint8_t* p = pixels + (std::size_t{y} * size + x) * 4;
       const bool checker = ((x / (size / 4)) + (y / (size / 4))) % 2 == 0;
       if (y < size / 2) {
         p[0] = checker ? 250 : 40;

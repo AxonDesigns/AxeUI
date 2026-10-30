@@ -26,8 +26,8 @@ using namespace ui::render;
 namespace {
 
 void log_to_stderr(void*, const LogRecord& record) {
-  std::fprintf(stderr, "[%d] %.*s\n", static_cast<int>(record.level),
-               static_cast<int>(record.message.size()), record.message.data());
+  static_cast<void>(std::fprintf(stderr, "[%d] %.*s\n", static_cast<int>(record.level),
+                                 static_cast<int>(record.message.size()), record.message.data()));
 }
 
 // 10,000 primitives on a 1920x1080 canvas: plain rects, bordered rounded
@@ -69,7 +69,8 @@ int main(int argc, char** argv) {
   const Logger logger(&log_to_stderr, nullptr, LogLevel::Warning);
   auto renderer = Renderer::create(memory, logger);
   if (!renderer) {
-    std::fprintf(stderr, "no WebGPU adapter: %s (skipping)\n", renderer.error().message);
+    static_cast<void>(
+        std::fprintf(stderr, "no WebGPU adapter: %s (skipping)\n", renderer.error().message));
     return 0;
   }
   TextureId textures[4];
@@ -95,7 +96,7 @@ int main(int argc, char** argv) {
     const auto t1 = Clock::now();
     if (auto rendered = (*renderer)->render_offscreen(list, 1920, 1080, {0, 0, 0, 1}, nullptr);
         !rendered) {
-      std::fprintf(stderr, "render failed: %s\n", rendered.error().message);
+      static_cast<void>(std::fprintf(stderr, "render failed: %s\n", rendered.error().message));
       return 1;
     }
     (*renderer)->process_events();

@@ -155,7 +155,7 @@ foundation::Result<void> TextureManager::update(display_list::TextureId id, std:
     return foundation::fail(Error{ErrorCode::InvalidArgument, "update rectangle out of bounds"});
   }
   if (stride < width * 4u ||
-      pixels.size() < static_cast<std::size_t>(stride) * (height - 1u) + width * 4u) {
+      pixels.size() < static_cast<std::size_t>(stride) * (height - 1u) + std::size_t{width} * 4u) {
     return foundation::fail(Error{ErrorCode::InvalidArgument, "pixel data too small for update"});
   }
 
@@ -168,8 +168,8 @@ foundation::Result<void> TextureManager::update(display_list::TextureId id, std:
       continue;
     }
     for (std::uint32_t col = 0; col < width; ++col) {
-      const std::uint8_t* s = src + col * 4u;
-      std::uint8_t* d = dst + col * 4u;
+      const std::uint8_t* s = src + std::size_t{col} * 4u;
+      std::uint8_t* d = dst + std::size_t{col} * 4u;
       const std::uint8_t a = s[3];
       if (record.format == TextureFormat::Rgba8Linear) {
         d[0] = premultiply_linear(s[0], a);

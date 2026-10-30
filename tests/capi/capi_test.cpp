@@ -217,8 +217,8 @@ TEST_CASE("API calls from inside callbacks are safe; destruction is deferred") {
   CHECK(ui_surface_resize(c.ptr, surface, 1024, 768, 1.0f) == UI_OK);
   CHECK(host.destroy_result == UI_OK);
   CHECK(host.frame_after_destroy == UI_ERROR_STALE_HANDLE);
-  CHECK(c.ptr->engine->surfaces.empty());  // Destroyed once the outer call returned.
-  CHECK(c.ptr->engine->core.surface_count() == 0);
+  CHECK(ui::capi::engine(*c.ptr).surfaces.empty());  // Destroyed once the outer call returned.
+  CHECK(ui::capi::engine(*c.ptr).core.surface_count() == 0);
   CHECK(ui_surface_frame(c.ptr, surface, 2) == UI_ERROR_STALE_HANDLE);
 
   // Destroying the context from inside a callback is refused.

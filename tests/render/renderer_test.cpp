@@ -223,8 +223,10 @@ UI_TEST_CASE("the instance ring grows for large frames and keeps working") {
   DisplayList list(memory());
   DisplayListBuilder builder(list, memory(), {100, 100}, ScaleFactor{1.0f});
   for (int i = 0; i < 10000; ++i) {
-    const float x = static_cast<float>(i % 100);
-    const float y = static_cast<float>(i / 100);
+    const int column = i % 100;
+    const int row = i / 100;
+    const float x = static_cast<float>(column);
+    const float y = static_cast<float>(row);
     builder.fill_rect(LogicalRect::from_xywh(x, y, 1, 1),
                       LinearRgbaPremul{static_cast<float>(i % 2), 0, 1, 1});
   }

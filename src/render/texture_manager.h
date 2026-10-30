@@ -95,7 +95,10 @@ class TextureManager {
 
   struct PendingUpdate {
     foundation::Handle handle;
-    std::uint32_t x, y, width, height;
+    std::uint32_t x = 0;
+    std::uint32_t y = 0;
+    std::uint32_t width = 0;
+    std::uint32_t height = 0;
   };
 
   [[nodiscard]] foundation::Result<void> create_gpu_texture(Record& record);

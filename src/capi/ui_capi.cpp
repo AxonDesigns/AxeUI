@@ -191,7 +191,7 @@ ui_error_code ui_context_poll_event(ui_context* context, ui_event* out_event) {
   if (out_event == nullptr || out_event->size < sizeof(std::uint32_t) * 2) {
     return UI_ERROR_INVALID_ARGUMENT;
   }
-  ui::capi::Engine& engine = *context->engine;
+  ui::capi::Engine& engine = ui::capi::engine(*context);
   if (context->wake_pending.exchange(false, std::memory_order_acq_rel)) {
     event.type = UI_EVENT_WAKE;
   } else if (engine.queue_head < engine.queue.size()) {
@@ -255,7 +255,7 @@ ui_error_code ui_surface_create(ui_context* context, const ui_surface_desc* desc
     return UI_ERROR_INVALID_ARGUMENT;
   }
   const ApiScope scope(*context);
-  ui::capi::Engine& engine = *context->engine;
+  ui::capi::Engine& engine = ui::capi::engine(*context);
   const ui::platform::SurfaceInfo info{
       {static_cast<float>(options.width), static_cast<float>(options.height)},
       ui::foundation::ScaleFactor{options.scale},
@@ -288,7 +288,7 @@ ui_error_code ui_surface_destroy(ui_context* context, ui_handle surface) {
   // Deferred to the end of the outermost API call (ApiScope), so it is safe
   // from inside callbacks; the handle is stale from now on.
   (*found)->destroy_pending = true;
-  context->engine->pending_destroy.push_back((*found)->surface.id());
+  ui::capi::engine(*context).pending_destroy.push_back((*found)->surface.id());
   return UI_OK;
 }
 
@@ -317,7 +317,8 @@ ui_error_code ui_surface_frame(ui_context* context, ui_handle surface, int64_t t
   if (!found) {
     return to_c(found.error());
   }
-  context->engine->core.frame((*found)->surface.id(), ui::foundation::Timestamp{timestamp_ns});
+  ui::capi::engine(*context).core.frame((*found)->surface.id(),
+                                        ui::foundation::Timestamp{timestamp_ns});
   return UI_OK;
 }
 

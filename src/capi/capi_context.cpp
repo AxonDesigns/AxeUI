@@ -55,7 +55,7 @@ ApiScope::~ApiScope() {
   if (--context_.depth > 0 || !context_.engine.has_value()) {
     return;
   }
-  Engine& engine = *context_.engine;
+  Engine& engine = capi::engine(context_);
   // Destruction requested during dispatch happens now, outside of it.
   while (!engine.pending_destroy.empty()) {
     const platform::SurfaceId id = engine.pending_destroy.back();
@@ -93,7 +93,7 @@ void deliver_event(ui_context& context, ui_event_type type, ui_handle surface, u
     context.event_callback(context.event_user_data, &event);
     return;
   }
-  Engine& engine = *context.engine;
+  Engine& engine = capi::engine(context);
   if (engine.queue.size() - engine.queue_head >= kMaxQueuedEvents) {
     ++engine.dropped_events;  // The host is not draining the queue.
     return;
@@ -112,7 +112,7 @@ void report_bad_handle(const ui_context& context, const foundation::Error& error
 
 foundation::Result<CapiSurface*> resolve_surface(ui_context& context, ui_handle handle,
                                                  const char* function) {
-  Engine& engine = *context.engine;
+  Engine& engine = capi::engine(context);
   const platform::SurfaceId id{foundation::Handle::from_bits(handle)};
   auto state = engine.core.surface(id);
   if (!state) {

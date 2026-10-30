@@ -12,6 +12,12 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  # Pinned toolchain versions used by the jobs below.
+  EMSDK_VERSION: 6.0.13
+  DART_SDK_VERSION: 3.13.5
+  NODE_VERSION: 24
+
 jobs:
   native:
     name: ${{ matrix.name }}
@@ -29,10 +35,12 @@ jobs:
           - name: macOS Clang (Debug)
             os: macos-14
             build_type: Debug
-          - name: Linux GCC (Debug)
+          # Golden reference configuration: Linux + Mesa lavapipe.
+          - name: Linux GCC (Debug, golden reference)
             os: ubuntu-24.04
             build_type: Debug
             cmake_args: -DCMAKE_C_COMPILER=gcc-13 -DCMAKE_CXX_COMPILER=g++-13
+            dart: true
           - name: Linux GCC (Release)
             os: ubuntu-24.04
             build_type: Release
@@ -49,6 +57,28 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Install Linux dependencies (lavapipe, X11, Wayland)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            mesa-vulkan-drivers libvulkan1 \
+            libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxi-dev libxfixes-dev \
+            libxkbcommon-dev libwayland-dev wayland-protocols libegl1-mesa-dev
+          dpkg -s mesa-vulkan-drivers | grep '^Version'
+
+      - name: Cache pinned dependencies (Dawn, SDL3)
+        uses: actions/cache@v4
+        with:
+          path: .deps
+          key: deps-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('cmake/ui_dependencies.cmake') }}
+
+      - name: Set up Dart
+        if: matrix.dart
+        uses: dart-lang/setup-dart@v1
+        with:
+          sdk: ${{ env.DART_SDK_VERSION }}
+
       - name: Configure
         shell: bash
         run: >
@@ -63,27 +93,58 @@ jobs:
       - name: Test
         run: ctest --test-dir build -C ${{ matrix.build_type }} --output-on-failure
 
+      - name: Upload golden-image failures
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: golden-failures-${{ matrix.os }}-${{ matrix.build_type }}-${{ strategy.job-index }}
+          path: build/golden-failures
+          if-no-files-found: ignore
+
   emscripten:
-    name: Emscripten (Node)
+    name: Emscripten (Node, emdawnwebgpu, TypeScript)
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
 
+      - name: Cache pinned dependencies (emdawnwebgpu)
+        uses: actions/cache@v4
+        with:
+          path: .deps
+          key: deps-emscripten-${{ hashFiles('cmake/ui_dependencies.cmake') }}
+
       - uses: mymindstorm/setup-emsdk@v14
         with:
-          version: 6.0.13
+          version: ${{ env.EMSDK_VERSION }}
           actions-cache-folder: emsdk-cache
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
 
       - name: Configure
         run: emcmake cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug -DUI_WARNINGS_AS_ERRORS=ON
 
-      - name: Build
+      - name: Build (renderer with emdawnwebgpu, C API ES module)
         run: cmake --build build --parallel
 
-      # The Emscripten toolchain sets CMAKE_CROSSCOMPILING_EMULATOR to Node, so
-      # CTest runs the .js test programs under Node.
-      - name: Test
+      # Includes the TypeScript binding smoke test against axeui.mjs.
+      - name: Test under Node
         run: ctest --test-dir build --output-on-failure
+
+      - name: Type-check the TypeScript bindings
+        working-directory: bindings/typescript
+        run: |
+          npm ci --no-audit --no-fund
+          npx tsc --noEmit -p .
+
+  api:
+    name: C API description and generated files
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Generated files match api/ui_api.json
+        run: python3 tools/gen_api.py --check
 
   format:
     name: clang-format
@@ -94,5 +155,5 @@ jobs:
         run: pipx install clang-format==18.1.8
       - name: Check formatting
         run: |
-          git ls-files '*.h' '*.c' '*.cpp' ':!:third_party/**' \
+          git ls-files '*.h' '*.c' '*.cpp' ':!:third_party/**' ':!:include/ui/ui.h' \
             | xargs clang-format --dry-run --Werror

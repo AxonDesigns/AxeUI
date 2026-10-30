@@ -174,8 +174,8 @@ class Renderer final {
   };
 
   struct PipelineEntry {
-    wgpu::TextureFormat format;
-    bool encode_srgb;
+    wgpu::TextureFormat format = wgpu::TextureFormat::Undefined;
+    bool encode_srgb = false;
     wgpu::RenderPipeline pipeline;
   };
 

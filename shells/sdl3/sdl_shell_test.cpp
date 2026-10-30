@@ -16,7 +16,6 @@
 using namespace ui::foundation;
 using namespace ui::platform;
 using ui::sdl3::SdlShell;
-using ui::sdl3::SdlWindow;
 using ui::test::LogCapture;
 
 namespace {

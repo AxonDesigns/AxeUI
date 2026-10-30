@@ -113,6 +113,13 @@ class ApiScope {
   ui_context& context_;
 };
 
+// The context's engine. It exists from ui_context_create() until the context
+// is destroyed, so every API function may use it after check_context().
+[[nodiscard]] inline Engine& engine(ui_context& context) noexcept {
+  UI_ASSERT(context.engine.has_value(), "context has no engine");
+  return *context.engine;  // NOLINT(bugprone-unchecked-optional-access): asserted above.
+}
+
 // Validates the context pointer and the calling thread.
 [[nodiscard]] ui_error_code check_context(const ui_context* context) noexcept;
 

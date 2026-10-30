@@ -114,7 +114,7 @@ void paint(void* user_data, platform::SurfaceId id, display_list::DisplayListBui
 void make_texture(std::uint8_t* pixels) {
   for (std::uint32_t y = 0; y < 64; ++y) {
     for (std::uint32_t x = 0; x < 64; ++x) {
-      std::uint8_t* p = pixels + (y * 64 + x) * 4;
+      std::uint8_t* p = pixels + (std::size_t{y} * 64 + x) * 4;
       const bool checker = ((x / 8) + (y / 8)) % 2 == 0;
       p[0] = checker ? 250 : 38;
       p[1] = checker ? 200 : 139;
@@ -126,8 +126,8 @@ void make_texture(std::uint8_t* pixels) {
 
 void log_to_stderr(void*, const foundation::LogRecord& record) {
   static const char* const kLevels[] = {"trace", "debug", "info", "warning", "error"};
-  std::fprintf(stderr, "[%s] %.*s\n", kLevels[static_cast<int>(record.level)],
-               static_cast<int>(record.message.size()), record.message.data());
+  static_cast<void>(std::fprintf(stderr, "[%s] %.*s\n", kLevels[static_cast<int>(record.level)],
+                                 static_cast<int>(record.message.size()), record.message.data()));
 }
 
 }  // namespace
@@ -139,13 +139,15 @@ int main(int /*argc*/, char** /*argv*/) {
 
   auto shell = sdl3::SdlShell::create(memory, logger);
   if (!shell) {
-    std::fprintf(stderr, "cannot start the SDL shell: %s\n", shell.error().message);
+    static_cast<void>(
+        std::fprintf(stderr, "cannot start the SDL shell: %s\n", shell.error().message));
     return 1;
   }
   platform::Core core(**shell, memory, logger);
   auto renderer = render::Renderer::create(memory, logger);
   if (!renderer) {
-    std::fprintf(stderr, "cannot start the renderer: %s\n", renderer.error().message);
+    static_cast<void>(
+        std::fprintf(stderr, "cannot start the renderer: %s\n", renderer.error().message));
     return 1;
   }
 
@@ -163,7 +165,7 @@ int main(int /*argc*/, char** /*argv*/) {
   auto main_window = (*shell)->create_window({"AxeUI - main window", 800, 460, true});
   auto second_window = (*shell)->create_window({"AxeUI - second window", 420, 320, true});
   if (!main_window || !second_window) {
-    std::fprintf(stderr, "cannot create windows\n");
+    static_cast<void>(std::fprintf(stderr, "cannot create windows\n"));
     return 1;
   }
   app.main_window = (*main_window)->id();
