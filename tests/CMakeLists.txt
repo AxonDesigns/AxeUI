@@ -79,6 +79,15 @@ if(UI_ENABLE_RENDERER)
     endif()
   endif()
   set_tests_properties(ui_render_tests PROPERTIES ENVIRONMENT "${UI_RENDER_TEST_ENV}")
+
+  # CPU cost of a 10,000-instance frame. Run by hand for numbers; CTest runs
+  # a short pass to keep it working (and to check zero steady-state allocations).
+  add_executable(ui_render_benchmark render/render_benchmark.cpp)
+  target_include_directories(ui_render_benchmark PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+  target_link_libraries(ui_render_benchmark PRIVATE ui_render)
+  ui_configure_target(ui_render_benchmark)
+  add_test(NAME ui_render_benchmark_smoke COMMAND ui_render_benchmark 5)
+  set_tests_properties(ui_render_benchmark_smoke PROPERTIES ENVIRONMENT "${UI_RENDER_TEST_ENV}")
 endif()
 
 ui_add_test(ui_capi_tests
