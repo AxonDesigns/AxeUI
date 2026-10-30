@@ -25,8 +25,11 @@ UI_CHECK_ERROR(UI_ERROR_UNSUPPORTED, Unsupported);
 UI_CHECK_ERROR(UI_ERROR_UNAVAILABLE, Unavailable);
 UI_CHECK_ERROR(UI_ERROR_INVALID_STATE, InvalidState);
 UI_CHECK_ERROR(UI_ERROR_INTERNAL, Internal);
+UI_CHECK_ERROR(UI_ERROR_GPU, GpuError);
+UI_CHECK_ERROR(UI_ERROR_DEVICE_LOST, DeviceLost);
+UI_CHECK_ERROR(UI_ERROR_WRONG_THREAD, WrongThread);
 #undef UI_CHECK_ERROR
-static_assert(ui::foundation::kErrorCodeCount == 11, "update ui_error_code in ui.h");
+static_assert(ui::foundation::kErrorCodeCount == 14, "update ui_error_code in ui.h");
 
 static_assert(static_cast<int>(UI_LOG_TRACE) == static_cast<int>(LogLevel::Trace));
 static_assert(static_cast<int>(UI_LOG_DEBUG) == static_cast<int>(LogLevel::Debug));
@@ -66,6 +69,12 @@ const char* ui_error_code_name(ui_error_code code) {
       return "UI_ERROR_INVALID_STATE";
     case UI_ERROR_INTERNAL:
       return "UI_ERROR_INTERNAL";
+    case UI_ERROR_GPU:
+      return "UI_ERROR_GPU";
+    case UI_ERROR_DEVICE_LOST:
+      return "UI_ERROR_DEVICE_LOST";
+    case UI_ERROR_WRONG_THREAD:
+      return "UI_ERROR_WRONG_THREAD";
     case UI_ERROR_FORCE_32BIT:
       break;
   }

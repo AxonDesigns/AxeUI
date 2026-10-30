@@ -11,6 +11,21 @@ include(ui_build_settings)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)  # For clang-tidy and editors.
 
 option(UI_BUILD_TESTS "Build the AxeUI unit tests" ${PROJECT_IS_TOP_LEVEL})
+option(UI_ENABLE_RENDERER "Build the WebGPU renderer (downloads pinned Dawn)" ON)
+
+include(ui_dependencies)
+
+if(UI_ENABLE_RENDERER AND MSVC)
+  # The prebuilt Dawn package is built against the release CRT. Every target
+  # in the process must match it, so all configurations use /MD and the
+  # release iterator debug level (docs/architecture.md, "Renderer > Dawn").
+  set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreadedDLL")
+  add_compile_definitions(_ITERATOR_DEBUG_LEVEL=0)
+endif()
+
+if(UI_ENABLE_RENDERER)
+  ui_provide_dawn()
+endif()
 
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
   set(CMAKE_BUILD_TYPE Debug CACHE STRING "Build type" FORCE)

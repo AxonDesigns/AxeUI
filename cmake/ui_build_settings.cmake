@@ -85,6 +85,17 @@ function(ui_configure_target target)
 endfunction()
 
 function(_ui_collect_targets dir out_var)
+  # Third-party projects added with add_subdirectory (built from .deps or
+  # _deps) follow their own build rules; only our own directories are checked.
+  cmake_path(IS_PREFIX PROJECT_SOURCE_DIR "${dir}" NORMALIZE inside_source)
+  set(deps_pos -1)
+  if(UI_DEPS_DIR)
+    string(FIND "${dir}" "${UI_DEPS_DIR}" deps_pos)
+  endif()
+  if(NOT inside_source OR deps_pos EQUAL 0)
+    set(${out_var} "" PARENT_SCOPE)
+    return()
+  endif()
   get_property(targets DIRECTORY "${dir}" PROPERTY BUILDSYSTEM_TARGETS)
   get_property(subdirs DIRECTORY "${dir}" PROPERTY SUBDIRECTORIES)
   foreach(subdir IN LISTS subdirs)

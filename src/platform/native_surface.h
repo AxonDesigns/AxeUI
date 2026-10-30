@@ -89,6 +89,33 @@ class NativeSurfaceHandle {
   [[nodiscard]] constexpr NativeSurfaceKind kind() const noexcept { return kind_; }
   [[nodiscard]] constexpr bool is_none() const noexcept { return kind_ == NativeSurfaceKind::None; }
 
+  friend bool operator==(const NativeSurfaceHandle& a, const NativeSurfaceHandle& b) noexcept {
+    if (a.kind_ != b.kind_) {
+      return false;
+    }
+    switch (a.kind_) {
+      case NativeSurfaceKind::None:
+        return true;
+      case NativeSurfaceKind::Win32:
+        return a.data_.win32.hwnd == b.data_.win32.hwnd &&
+               a.data_.win32.hinstance == b.data_.win32.hinstance;
+      case NativeSurfaceKind::MetalLayer:
+      case NativeSurfaceKind::IosMetalLayer:
+        return a.data_.metal.layer == b.data_.metal.layer;
+      case NativeSurfaceKind::Xlib:
+        return a.data_.xlib.display == b.data_.xlib.display &&
+               a.data_.xlib.window == b.data_.xlib.window;
+      case NativeSurfaceKind::Wayland:
+        return a.data_.wayland.display == b.data_.wayland.display &&
+               a.data_.wayland.surface == b.data_.wayland.surface;
+      case NativeSurfaceKind::AndroidWindow:
+        return a.data_.android.window == b.data_.android.window;
+      case NativeSurfaceKind::WebCanvas:
+        return a.data_.web.selector == b.data_.web.selector;
+    }
+    return false;
+  }
+
   // Accessors abort if the kind does not match, instead of reading an
   // inactive union member.
   [[nodiscard]] const Win32& as_win32() const noexcept {

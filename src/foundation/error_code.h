@@ -22,9 +22,12 @@ enum class ErrorCode : std::uint32_t {
   Unavailable = 8,  // Supported in general, but not right now / on this platform.
   InvalidState = 9,
   Internal = 10,
+  GpuError = 11,     // The graphics API reported an error (validation, out of memory).
+  DeviceLost = 12,   // The GPU device was lost; the renderer recreates it.
+  WrongThread = 13,  // Called from a thread that does not own the core.
 };
 
-inline constexpr std::uint32_t kErrorCodeCount = 11;
+inline constexpr std::uint32_t kErrorCodeCount = 14;
 
 // Stable, static name for a code ("InvalidArgument"). Unknown values yield
 // "Unknown".

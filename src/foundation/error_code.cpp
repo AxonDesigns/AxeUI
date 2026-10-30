@@ -26,6 +26,12 @@ const char* error_code_name(ErrorCode code) noexcept {
       return "InvalidState";
     case ErrorCode::Internal:
       return "Internal";
+    case ErrorCode::GpuError:
+      return "GpuError";
+    case ErrorCode::DeviceLost:
+      return "DeviceLost";
+    case ErrorCode::WrongThread:
+      return "WrongThread";
   }
   return "Unknown";
 }

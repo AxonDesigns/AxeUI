@@ -49,6 +49,28 @@ ui_add_test(ui_display_list_tests
     display_list/display_list_test.cpp
   LIBRARIES ui_display_list)
 
+if(UI_ENABLE_RENDERER)
+  ui_add_test(ui_render_tests
+    SOURCES
+      render/renderer_test.cpp
+    LIBRARIES ui_render)
+
+  # Golden reference configuration: on Linux, point the Vulkan loader at Mesa
+  # lavapipe only, so render tests never depend on the machine's GPU.
+  if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    find_file(UI_LAVAPIPE_ICD lvp_icd.json
+      PATHS /usr/share/vulkan/icd.d /etc/vulkan/icd.d /usr/local/share/vulkan/icd.d
+      NO_DEFAULT_PATH)
+    if(UI_LAVAPIPE_ICD)
+      set(UI_RENDER_TEST_ENV "VK_ICD_FILENAMES=${UI_LAVAPIPE_ICD};VK_DRIVER_FILES=${UI_LAVAPIPE_ICD}")
+    else()
+      message(WARNING "Mesa lavapipe not found (apt install mesa-vulkan-drivers); "
+                      "render tests use whatever Vulkan driver exists and goldens are skipped")
+    endif()
+  endif()
+  set_tests_properties(ui_render_tests PROPERTIES ENVIRONMENT "${UI_RENDER_TEST_ENV}")
+endif()
+
 ui_add_test(ui_capi_tests
   SOURCES
     capi/capi_test.cpp
