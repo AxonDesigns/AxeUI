@@ -1,0 +1,98 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  native:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows MSVC (Debug)
+            os: windows-2022
+            build_type: Debug
+          - name: Windows MSVC (Release)
+            os: windows-2022
+            build_type: Release
+          - name: macOS Clang (Debug)
+            os: macos-14
+            build_type: Debug
+          - name: Linux GCC (Debug)
+            os: ubuntu-24.04
+            build_type: Debug
+            cmake_args: -DCMAKE_C_COMPILER=gcc-13 -DCMAKE_CXX_COMPILER=g++-13
+          - name: Linux GCC (Release)
+            os: ubuntu-24.04
+            build_type: Release
+            cmake_args: -DCMAKE_C_COMPILER=gcc-13 -DCMAKE_CXX_COMPILER=g++-13
+          - name: Linux Clang ASan+UBSan
+            os: ubuntu-24.04
+            build_type: Debug
+            cmake_args: >-
+              -DCMAKE_C_COMPILER=clang-18 -DCMAKE_CXX_COMPILER=clang++-18
+              -DUI_ENABLE_ASAN=ON -DUI_ENABLE_UBSAN=ON
+    env:
+      ASAN_OPTIONS: detect_leaks=1:abort_on_error=1
+      UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure
+        shell: bash
+        run: >
+          cmake -S . -B build
+          -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
+          -DUI_WARNINGS_AS_ERRORS=ON
+          ${{ matrix.cmake_args }}
+
+      - name: Build
+        run: cmake --build build --config ${{ matrix.build_type }} --parallel
+
+      - name: Test
+        run: ctest --test-dir build -C ${{ matrix.build_type }} --output-on-failure
+
+  emscripten:
+    name: Emscripten (Node)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: 6.0.13
+          actions-cache-folder: emsdk-cache
+
+      - name: Configure
+        run: emcmake cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug -DUI_WARNINGS_AS_ERRORS=ON
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      # The Emscripten toolchain sets CMAKE_CROSSCOMPILING_EMULATOR to Node, so
+      # CTest runs the .js test programs under Node.
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+
+  format:
+    name: clang-format
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install clang-format
+        run: pipx install clang-format==18.1.8
+      - name: Check formatting
+        run: |
+          git ls-files '*.h' '*.c' '*.cpp' ':!:third_party/**' \
+            | xargs clang-format --dry-run --Werror

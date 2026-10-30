@@ -1,0 +1,41 @@
+---
+# Static analysis for engine code. Run with the compile database that CMake
+# writes to the build directory, e.g.:
+#   clang-tidy -p build src/foundation/arena.cpp
+#
+# Deliberately not enabled:
+# - performance-enum-size: enum widths are ABI / shader formats.
+# - readability-simplify-boolean-expr: rewrites `!(a > 0 && b > 0)` into
+#   `a <= 0 || b <= 0`, which is wrong for NaN (the geometry code relies on it).
+# - modernize-use-using: include/ui/ui.h is C and must use typedef.
+Checks: >
+  -*,
+  bugprone-*,
+  -bugprone-easily-swappable-parameters,
+  -bugprone-macro-parentheses,
+  cert-dcl58-cpp,
+  cert-err33-c,
+  clang-analyzer-*,
+  cppcoreguidelines-init-variables,
+  cppcoreguidelines-missing-std-forward,
+  cppcoreguidelines-pro-type-member-init,
+  cppcoreguidelines-slicing,
+  cppcoreguidelines-virtual-class-destructor,
+  google-explicit-constructor,
+  misc-definitions-in-headers,
+  misc-misplaced-const,
+  misc-redundant-expression,
+  misc-unused-using-decls,
+  modernize-use-nullptr,
+  modernize-use-override,
+  performance-*,
+  -performance-enum-size,
+  readability-container-size-empty,
+  readability-make-member-function-const,
+  readability-redundant-*
+WarningsAsErrors: ''
+HeaderFilterRegex: '(src|include)/.*'
+FormatStyle: file
+CheckOptions:
+  - key: performance-unnecessary-value-param.AllowedTypes
+    value: 'ScaleFactor;TextureId;Timestamp;Handle'
