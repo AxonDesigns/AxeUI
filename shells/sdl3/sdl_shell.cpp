@@ -313,9 +313,12 @@ foundation::Result<SdlWindow*> SdlShell::create_window(const WindowDesc& desc) {
   if (desc.resizable) {
     flags |= SDL_WINDOW_RESIZABLE;
   }
-#if defined(__APPLE__)
-  flags |= SDL_WINDOW_METAL;
-#endif
+  // Metal views exist only with the Cocoa driver (not, e.g., SDL's dummy
+  // driver used for headless tests).
+  const bool use_metal = video_driver() == "cocoa";
+  if (use_metal) {
+    flags |= SDL_WINDOW_METAL;
+  }
   SDL_Window* window = SDL_CreateWindow(desc.title, desc.width, desc.height, flags);
   if (window == nullptr) {
     UI_LOGF(*logger_, LogLevel::Error, ErrorCode::Unavailable, "SDL_CreateWindow failed: %s",
@@ -324,11 +327,13 @@ foundation::Result<SdlWindow*> SdlShell::create_window(const WindowDesc& desc) {
   }
   void* metal_view = nullptr;
 #if defined(__APPLE__)
-  // A CAMetalLayer-backed view; WebGPU (Metal) presents into its layer.
-  metal_view = SDL_Metal_CreateView(window);
-  if (metal_view == nullptr) {
-    SDL_DestroyWindow(window);
-    return foundation::fail(Error{ErrorCode::Unavailable, "creating the Metal view failed"});
+  if (use_metal) {
+    // A CAMetalLayer-backed view; WebGPU (Metal) presents into its layer.
+    metal_view = SDL_Metal_CreateView(window);
+    if (metal_view == nullptr) {
+      SDL_DestroyWindow(window);
+      return foundation::fail(Error{ErrorCode::Unavailable, "creating the Metal view failed"});
+    }
   }
 #endif
   auto created = foundation::allocate_unique<SdlWindow>(*memory_, *this, window, metal_view);

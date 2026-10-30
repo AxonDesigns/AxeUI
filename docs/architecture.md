@@ -616,8 +616,10 @@ a table, and a process-wide table would be global mutable state.
   which expects a non-zero exit plus the assertion message (also under Node).
 - Platform tests drive `Core` only through `HostShell`/`HostSurface` with
   recording callbacks: the same path a real embedder uses.
-- Renderer tests need a WebGPU adapter. Where there is none (CI machines
-  without GPU access, Node), they are skipped with a message.
+- Renderer tests need a WebGPU adapter. Where there is none (Node), they are
+  skipped with a message. They print every diagnostic the renderer logs and
+  fail on errors only: warnings differ between drivers and backends (e.g.
+  Dawn's Metal backend on CI's paravirtual GPU).
 - The SDL3 shell is tested on SDL's `dummy` video driver: real SDL windows and
   event loop with injected SDL events and no display (windows have no native
   surface, so frames go through the headless path).
@@ -629,9 +631,9 @@ a table, and a process-wide table would be global mutable state.
   (`mesa-vulkan-drivers`). CTest points the Vulkan loader at the lavapipe ICD
   only (`VK_ICD_FILENAMES`/`VK_DRIVER_FILES`), so a real GPU on the machine
   does not change results. The goldens in `tests/goldens/` were generated with
-  Mesa 25.2.8 / LLVM 20.1.2 (Ubuntu 24.04 `noble-updates`). The CI job
-  installs the current `noble-updates` package and prints its version; it has
-  not yet been confirmed on a CI run that the versions match. Golden tests
+  Mesa 25.2.8 / LLVM 20.1.2 (Ubuntu 24.04 `noble-updates`,
+  `25.2.8-0ubuntu0.24.04.4`), the same package the CI job installed when this
+  was last checked; the job prints the version it gets. Golden tests
   run only when the adapter is lavapipe; other
   configurations build and run every non-golden test, and skip goldens with a
   message.

@@ -41,6 +41,17 @@ inline foundation::UniquePtr<render::Renderer> make_renderer(foundation::MemoryR
   return std::move(renderer).value();
 }
 
+// Prints every diagnostic the renderer logged and fails on errors. Warnings
+// are allowed: drivers and backends differ in what they report (Dawn's Metal
+// backend on CI's paravirtual GPU, for example), but a GPU error never passes.
+inline void check_no_errors(const LogCapture& log) {
+  for (const CapturedLog& record : log.records()) {
+    MESSAGE("log level " << static_cast<int>(record.level) << " code "
+                         << static_cast<int>(record.code) << ": " << record.message);
+    CHECK(record.level < foundation::LogLevel::Error);
+  }
+}
+
 // True when the adapter is the golden-image reference (Mesa lavapipe).
 inline bool is_reference_adapter(render::Renderer& renderer) {
   const std::string_view name = renderer.gpu().adapter_name();

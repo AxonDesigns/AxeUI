@@ -129,7 +129,7 @@ UI_TEST_CASE("golden: solid and rounded rects at fractional positions and scale 
     check_scene(memory(), *renderer, "rects" + scale_suffix(scale), {120, 60}, scale, kWhite,
                 paint_rects);
   }
-  CHECK(log.records().empty());
+  ui::test::check_no_errors(log);
 }
 
 UI_TEST_CASE("golden: four different corner radii") {

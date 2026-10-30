@@ -168,7 +168,7 @@ UI_TEST_CASE("straight-alpha uploads are premultiplied in linear space") {
   CHECK(near(pixel(image, 2, 0, 0), {188, 0, 0, 255}));
   // A linear-format texture holding 255*0.5=128 means 0.5 linear too.
   CHECK(near(pixel(image, 2, 1, 0), {188, 0, 0, 255}));
-  CHECK(log.records().empty());
+  ui::test::check_no_errors(log);
 }
 
 UI_TEST_CASE("texture updates are validated") {
@@ -240,7 +240,7 @@ UI_TEST_CASE("the instance ring grows for large frames and keeps working") {
   CHECK(pixel(image, 100, 0, 0) == Rgba{0, 0, 255, 255});
   CHECK(pixel(image, 100, 1, 0) == Rgba{255, 0, 255, 255});
   CHECK(pixel(image, 100, 99, 99) == Rgba{255, 0, 255, 255});
-  CHECK(log.records().empty());
+  ui::test::check_no_errors(log);
 }
 
 UI_TEST_CASE("device loss is recovered with textures restored") {
@@ -377,5 +377,5 @@ UI_TEST_CASE("the frame driver paints and renders each surface; steady state all
   CHECK(core.remove_surface(a).has_value());
   CHECK(renderer->read_back(a, image).error().code == ErrorCode::InvalidState);
   CHECK(core.remove_surface(b).has_value());
-  CHECK(log.records().empty());
+  ui::test::check_no_errors(log);
 }

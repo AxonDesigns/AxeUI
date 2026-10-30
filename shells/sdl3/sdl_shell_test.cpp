@@ -153,8 +153,5 @@ UI_TEST_CASE("SDL shell: windows, input translation, frames, wake-up and quit") 
     CHECK_FALSE((*shell)->pump());
     (*shell)->destroy_window(*a);
   }
-  for (const auto& record : log.records()) {
-    MESSAGE(record.message);
-  }
-  CHECK(log.records().empty());
+  ui::test::check_no_errors(log);
 }
