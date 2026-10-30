@@ -14,8 +14,8 @@ TEST_CASE("handle bit layout is [0:11 | type:6 | generation:20 | index:27]") {
   CHECK(Handle::from_bits(h.bits()) == h);
 
   // Every handle fits in 53 bits: exact as a JavaScript number.
-  const Handle max = Handle::make(static_cast<HandleType>(Handle::kMaxType),
-                                  Handle::kMaxGeneration, Handle::kIndexMask);
+  const Handle max = Handle::make(static_cast<HandleType>(Handle::kMaxType), Handle::kMaxGeneration,
+                                  Handle::kIndexMask);
   CHECK(max.bits() == (1ull << 53) - 1);
   CHECK(max.is_well_formed());
   CHECK_FALSE(Handle::from_bits(1ull << 53).is_well_formed());
