@@ -72,6 +72,8 @@ if(UI_ENABLE_RENDERER)
       PATHS /usr/share/vulkan/icd.d /etc/vulkan/icd.d /usr/local/share/vulkan/icd.d
       NO_DEFAULT_PATH)
     if(UI_LAVAPIPE_ICD)
+      set(UI_RENDER_TEST_ENV "VK_ICD_FILENAMES=${UI_LAVAPIPE_ICD};VK_DRIVER_FILES=${UI_LAVAPIPE_ICD}"
+          PARENT_SCOPE)
       set(UI_RENDER_TEST_ENV "VK_ICD_FILENAMES=${UI_LAVAPIPE_ICD};VK_DRIVER_FILES=${UI_LAVAPIPE_ICD}")
     else()
       message(WARNING "Mesa lavapipe not found (apt install mesa-vulkan-drivers); "

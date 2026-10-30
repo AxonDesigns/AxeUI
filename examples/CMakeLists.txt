@@ -1,0 +1,3 @@
+add_executable(hello_surfaces hello_surfaces/main.cpp)
+target_link_libraries(hello_surfaces PRIVATE ui_frame ui_shell_sdl3)
+ui_configure_target(hello_surfaces)

@@ -134,5 +134,11 @@ function(ui_provide_sdl3)
   set(SDL_EXAMPLES OFF CACHE BOOL "" FORCE)
   set(SDL_INSTALL OFF CACHE BOOL "" FORCE)
   set(SDL_DISABLE_INSTALL ON CACHE BOOL "" FORCE)
+  # Only video and events are used; skipping the rest keeps the build small
+  # and avoids optional system dependencies.
+  foreach(subsystem AUDIO GPU RENDER CAMERA JOYSTICK HAPTIC HIDAPI POWER SENSOR DIALOG TRAY)
+    set(SDL_${subsystem} OFF CACHE BOOL "" FORCE)
+  endforeach()
+  set(SDL_X11_XSCRNSAVER OFF CACHE BOOL "" FORCE)
   add_subdirectory("${sdl_dir}/SDL3-${UI_SDL3_VERSION}" "${CMAKE_BINARY_DIR}/_deps/sdl3" EXCLUDE_FROM_ALL SYSTEM)
 endfunction()

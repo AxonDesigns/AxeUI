@@ -12,6 +12,13 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)  # For clang-tidy and editors.
 
 option(UI_BUILD_TESTS "Build the AxeUI unit tests" ${PROJECT_IS_TOP_LEVEL})
 option(UI_ENABLE_RENDERER "Build the WebGPU renderer (downloads pinned Dawn)" ON)
+if(EMSCRIPTEN)
+  set(ui_desktop_default OFF)
+else()
+  set(ui_desktop_default ${UI_ENABLE_RENDERER})
+endif()
+option(UI_ENABLE_SDL3_SHELL "Build the SDL3 desktop shell and examples (downloads pinned SDL3)"
+       ${ui_desktop_default})
 
 include(ui_dependencies)
 
@@ -36,6 +43,14 @@ add_subdirectory(src)
 if(UI_BUILD_TESTS)
   enable_testing()
   add_subdirectory(tests)
+endif()
+
+if(UI_ENABLE_SDL3_SHELL)
+  if(NOT UI_ENABLE_RENDERER)
+    message(FATAL_ERROR "UI_ENABLE_SDL3_SHELL requires UI_ENABLE_RENDERER")
+  endif()
+  add_subdirectory(shells)
+  add_subdirectory(examples)
 endif()
 
 ui_verify_targets_configured()
