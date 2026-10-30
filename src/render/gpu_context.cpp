@@ -198,6 +198,7 @@ void GpuContext::on_uncaptured_error(const wgpu::Device& /*device*/, wgpu::Error
           static_cast<unsigned>(type), static_cast<int>(text.size()), text.data());
 }
 
+#if !defined(__EMSCRIPTEN__)
 void GpuContext::on_dawn_log(wgpu::LoggingType type, wgpu::StringView message, GpuContext* self) {
   LogLevel level = LogLevel::Debug;
   if (type == wgpu::LoggingType::Warning) {
@@ -211,5 +212,6 @@ void GpuContext::on_dawn_log(wgpu::LoggingType type, wgpu::StringView message, G
   UI_LOGF(*self->logger_, level, ErrorCode::Ok, "Dawn: %.*s", static_cast<int>(text.size()),
           text.data());
 }
+#endif
 
 }  // namespace ui::render

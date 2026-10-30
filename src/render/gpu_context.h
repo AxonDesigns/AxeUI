@@ -103,7 +103,10 @@ class GpuContext {
                              wgpu::StringView message, GpuContext* self);
   static void on_uncaptured_error(const wgpu::Device& device, wgpu::ErrorType type,
                                   wgpu::StringView message, GpuContext* self);
+#if !defined(__EMSCRIPTEN__)
+  // Dawn's logging callback is a native-only extension.
   static void on_dawn_log(wgpu::LoggingType type, wgpu::StringView message, GpuContext* self);
+#endif
 
   const foundation::Logger* logger_;
   GpuOptions options_;
