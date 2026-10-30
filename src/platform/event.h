@@ -102,72 +102,83 @@ struct ImePreeditEvent {
   std::int32_t cursor_end = -1;
 };
 
+// Every event except Suspend and Resume concerns one surface, identified by
+// surface(). Suspend and Resume apply to the whole application and carry a
+// null SurfaceId.
 class Event {
  public:
-  [[nodiscard]] static Event pointer_down(foundation::Timestamp time,
+  using Timestamp = foundation::Timestamp;
+
+  [[nodiscard]] static Event pointer_down(SurfaceId s, Timestamp t,
                                           const PointerEvent& e) noexcept {
-    return pointer(EventKind::PointerDown, time, e);
+    return pointer(EventKind::PointerDown, s, t, e);
   }
-  [[nodiscard]] static Event pointer_up(foundation::Timestamp time,
-                                        const PointerEvent& e) noexcept {
-    return pointer(EventKind::PointerUp, time, e);
+  [[nodiscard]] static Event pointer_up(SurfaceId s, Timestamp t, const PointerEvent& e) noexcept {
+    return pointer(EventKind::PointerUp, s, t, e);
   }
-  [[nodiscard]] static Event pointer_move(foundation::Timestamp time,
+  [[nodiscard]] static Event pointer_move(SurfaceId s, Timestamp t,
                                           const PointerEvent& e) noexcept {
-    return pointer(EventKind::PointerMove, time, e);
+    return pointer(EventKind::PointerMove, s, t, e);
   }
-  [[nodiscard]] static Event pointer_cancel(foundation::Timestamp time,
+  [[nodiscard]] static Event pointer_cancel(SurfaceId s, Timestamp t,
                                             const PointerEvent& e) noexcept {
-    return pointer(EventKind::PointerCancel, time, e);
+    return pointer(EventKind::PointerCancel, s, t, e);
   }
-  [[nodiscard]] static Event scroll(foundation::Timestamp time, const ScrollEvent& e) noexcept {
-    Event event(EventKind::Scroll, time);
+  [[nodiscard]] static Event scroll(SurfaceId s, Timestamp t, const ScrollEvent& e) noexcept {
+    Event event(EventKind::Scroll, s, t);
     event.payload_.scroll = e;
     return event;
   }
-  [[nodiscard]] static Event key_down(foundation::Timestamp time, const KeyEvent& e) noexcept {
-    return key(EventKind::KeyDown, time, e);
+  [[nodiscard]] static Event key_down(SurfaceId s, Timestamp t, const KeyEvent& e) noexcept {
+    return key(EventKind::KeyDown, s, t, e);
   }
-  [[nodiscard]] static Event key_up(foundation::Timestamp time, const KeyEvent& e) noexcept {
-    return key(EventKind::KeyUp, time, e);
+  [[nodiscard]] static Event key_up(SurfaceId s, Timestamp t, const KeyEvent& e) noexcept {
+    return key(EventKind::KeyUp, s, t, e);
   }
-  [[nodiscard]] static Event text_input(foundation::Timestamp time,
-                                        std::string_view text) noexcept {
-    return with_text(EventKind::TextInput, time, text);
+  [[nodiscard]] static Event text_input(SurfaceId s, Timestamp t, std::string_view text) noexcept {
+    return with_text(EventKind::TextInput, s, t, text);
   }
-  [[nodiscard]] static Event ime_preedit(foundation::Timestamp time,
+  [[nodiscard]] static Event ime_preedit(SurfaceId s, Timestamp t,
                                          const ImePreeditEvent& e) noexcept {
-    Event event(EventKind::ImePreedit, time);
+    Event event(EventKind::ImePreedit, s, t);
     event.payload_.preedit = e;
     return event;
   }
-  [[nodiscard]] static Event ime_commit(foundation::Timestamp time,
-                                        std::string_view text) noexcept {
-    return with_text(EventKind::ImeCommit, time, text);
+  [[nodiscard]] static Event ime_commit(SurfaceId s, Timestamp t, std::string_view text) noexcept {
+    return with_text(EventKind::ImeCommit, s, t, text);
   }
-  [[nodiscard]] static Event resize(foundation::Timestamp time,
-                                    const SurfaceInfo& surface) noexcept {
-    return with_surface(EventKind::Resize, time, surface);
+  [[nodiscard]] static Event resize(SurfaceId s, Timestamp t, const SurfaceInfo& info) noexcept {
+    return with_surface_info(EventKind::Resize, s, t, info);
   }
-  [[nodiscard]] static Event scale_factor_changed(foundation::Timestamp time,
-                                                  const SurfaceInfo& surface) noexcept {
-    return with_surface(EventKind::ScaleFactorChanged, time, surface);
+  [[nodiscard]] static Event scale_factor_changed(SurfaceId s, Timestamp t,
+                                                  const SurfaceInfo& info) noexcept {
+    return with_surface_info(EventKind::ScaleFactorChanged, s, t, info);
   }
-  // For kinds without a payload: focus, lifecycle and close events.
-  [[nodiscard]] static Event simple(EventKind kind, foundation::Timestamp time) noexcept {
+  // Surface events without a payload: FocusGained, FocusLost, SurfaceLost,
+  // CloseRequested.
+  [[nodiscard]] static Event surface_event(EventKind kind, SurfaceId s, Timestamp t) noexcept {
     UI_ASSERT(kind == EventKind::FocusGained || kind == EventKind::FocusLost ||
-                  kind == EventKind::Suspend || kind == EventKind::Resume ||
                   kind == EventKind::SurfaceLost || kind == EventKind::CloseRequested,
-              "event kind requires a payload");
-    return Event(kind, time);
+              "event kind requires a payload or is application-wide");
+    return Event(kind, s, t);
+  }
+  // Application-wide events: Suspend, Resume.
+  [[nodiscard]] static Event app_event(EventKind kind, Timestamp t) noexcept {
+    UI_ASSERT(kind == EventKind::Suspend || kind == EventKind::Resume,
+              "not an application-wide event kind");
+    return Event(kind, SurfaceId{}, t);
   }
 
   [[nodiscard]] EventKind kind() const noexcept { return kind_; }
-  [[nodiscard]] foundation::Timestamp time() const noexcept { return time_; }
+  [[nodiscard]] SurfaceId surface() const noexcept { return surface_; }
+  [[nodiscard]] Timestamp time() const noexcept { return time_; }
 
   [[nodiscard]] bool is_pointer() const noexcept {
     return kind_ == EventKind::PointerDown || kind_ == EventKind::PointerUp ||
            kind_ == EventKind::PointerMove || kind_ == EventKind::PointerCancel;
+  }
+  [[nodiscard]] bool is_app_wide() const noexcept {
+    return kind_ == EventKind::Suspend || kind_ == EventKind::Resume;
   }
 
   // Payload accessors. Reading the payload of another kind is a programming
@@ -193,11 +204,11 @@ class Event {
     UI_ASSERT(kind_ == EventKind::ImePreedit, "not an IME preedit event");
     return payload_.preedit;
   }
-  // Surface of Resize and ScaleFactorChanged events.
-  [[nodiscard]] const SurfaceInfo& surface() const noexcept {
+  // New size and scale of Resize and ScaleFactorChanged events.
+  [[nodiscard]] const SurfaceInfo& surface_info() const noexcept {
     UI_ASSERT(kind_ == EventKind::Resize || kind_ == EventKind::ScaleFactorChanged,
-              "not a surface event");
-    return payload_.surface;
+              "not a resize or scale event");
+    return payload_.surface_info;
   }
 
  private:
@@ -210,36 +221,36 @@ class Event {
     KeyEvent key;
     std::string_view text;
     ImePreeditEvent preedit;
-    SurfaceInfo surface;
+    SurfaceInfo surface_info;
   };
 
-  Event(EventKind kind, foundation::Timestamp time) noexcept : kind_(kind), time_(time) {}
+  Event(EventKind kind, SurfaceId s, Timestamp t) noexcept : kind_(kind), surface_(s), time_(t) {}
 
-  static Event pointer(EventKind kind, foundation::Timestamp time, const PointerEvent& e) noexcept {
-    Event event(kind, time);
+  static Event pointer(EventKind kind, SurfaceId s, Timestamp t, const PointerEvent& e) noexcept {
+    Event event(kind, s, t);
     event.payload_.pointer = e;
     return event;
   }
-  static Event key(EventKind kind, foundation::Timestamp time, const KeyEvent& e) noexcept {
-    Event event(kind, time);
+  static Event key(EventKind kind, SurfaceId s, Timestamp t, const KeyEvent& e) noexcept {
+    Event event(kind, s, t);
     event.payload_.key = e;
     return event;
   }
-  static Event with_text(EventKind kind, foundation::Timestamp time,
-                         std::string_view text) noexcept {
-    Event event(kind, time);
+  static Event with_text(EventKind kind, SurfaceId s, Timestamp t, std::string_view text) noexcept {
+    Event event(kind, s, t);
     event.payload_.text = text;
     return event;
   }
-  static Event with_surface(EventKind kind, foundation::Timestamp time,
-                            const SurfaceInfo& surface) noexcept {
-    Event event(kind, time);
-    event.payload_.surface = surface;
+  static Event with_surface_info(EventKind kind, SurfaceId s, Timestamp t,
+                                 const SurfaceInfo& info) noexcept {
+    Event event(kind, s, t);
+    event.payload_.surface_info = info;
     return event;
   }
 
   EventKind kind_;
-  foundation::Timestamp time_;
+  SurfaceId surface_;
+  Timestamp time_;
   Payload payload_;
 };
 

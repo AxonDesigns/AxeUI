@@ -16,24 +16,30 @@ TEST_CASE("events carry their payload and timestamp") {
   pointer.kind = PointerKind::Pen;
   pointer.position = {1.5f, 2.5f};
   pointer.pressure = 0.25f;
-  const Event down = Event::pointer_down(Timestamp{99}, pointer);
+  const SurfaceId window{Handle::make(HandleType::Surface, 1, 3)};
+  const Event down = Event::pointer_down(window, Timestamp{99}, pointer);
   CHECK(down.kind() == EventKind::PointerDown);
+  CHECK(down.surface() == window);
   CHECK(down.time() == Timestamp{99});
   CHECK(down.is_pointer());
   CHECK(down.pointer().id == PointerId{42});
   CHECK(down.pointer().kind == PointerKind::Pen);
   CHECK(down.pointer().pressure == 0.25f);
 
-  const Event text = Event::text_input(Timestamp{}, "abc");
+  const Event text = Event::text_input(window, Timestamp{}, "abc");
   CHECK(text.text() == "abc");
   CHECK_FALSE(text.is_pointer());
 
-  const SurfaceInfo surface{{200, 100}, ScaleFactor{2.0f}};
-  const Event resize = Event::resize(Timestamp{}, surface);
-  CHECK(resize.surface().logical_size() == LogicalSize{100, 50});
+  const SurfaceInfo surface{{200, 100}, ScaleFactor{2.0f}, 60.0f};
+  const Event resize = Event::resize(window, Timestamp{}, surface);
+  CHECK(resize.surface_info().logical_size() == LogicalSize{100, 50});
 
   const Event copy = resize;  // Trivially copyable.
-  CHECK(copy.surface() == surface);
+  CHECK(copy.surface_info() == surface);
+
+  const Event suspend = Event::app_event(EventKind::Suspend, Timestamp{});
+  CHECK(suspend.is_app_wide());
+  CHECK(suspend.surface().is_null());
 }
 
 TEST_CASE("every event kind has a name") {

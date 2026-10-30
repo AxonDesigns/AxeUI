@@ -7,18 +7,15 @@
 #include "foundation/geometry.h"
 #include "foundation/logging.h"
 #include "foundation/result.h"
+#include "foundation/slot_map.h"
 #include "foundation/timestamp.h"
 #include "platform/event.h"
-#include "platform/shell.h"
+#include "platform/platform.h"
+#include "platform/surface.h"
 
 namespace ui::platform {
 
 enum class Lifecycle : std::uint8_t { Running, Suspended };
-
-struct SurfaceState {
-  SurfaceInfo info;
-  bool available = false;  // A drawable surface exists (cleared by SurfaceLost).
-};
 
 struct PointerState {
   PointerId id;
@@ -33,63 +30,131 @@ struct ImePreeditState {
   std::int32_t cursor_end = -1;
 };
 
+// Everything the core knows about one surface.
+struct SurfaceState {
+  SurfaceState(Surface& s, foundation::MemoryResource& memory)
+      : surface(&s),
+        pointers(foundation::Allocator<PointerState>(memory)),
+        preedit{foundation::String(foundation::Allocator<char>(memory)), -1, -1} {}
+
+  Surface* surface;
+  SurfaceInfo info;
+  bool available = false;  // A drawable surface exists (cleared by SurfaceLost).
+  bool focused = false;
+  bool close_requested = false;
+  bool needs_redraw = false;
+  bool frame_requested = false;  // Asked the surface for a frame, not delivered yet.
+  bool removal_pending = false;  // remove_surface() called during dispatch.
+  bool has_cursor = false;
+  CursorShape cursor = CursorShape::Default;
+  bool has_ime_area = false;
+  foundation::LogicalRect ime_area;
+  foundation::Vector<PointerState> pointers;
+  ImePreeditState preedit;
+  bool has_frame_time = false;
+  foundation::Timestamp last_frame_time;
+  std::uint64_t frames_rendered = 0;
+};
+
+// Receives the frames the core decides to render. This is the seam between
+// the core and the paint/render stages: today the FrameDriver (src/frame)
+// implements it with an application paint callback; later the element tree
+// plugs in here.
+class FrameHandler {
+ public:
+  FrameHandler() = default;
+  FrameHandler(const FrameHandler&) = delete;
+  FrameHandler& operator=(const FrameHandler&) = delete;
+  virtual ~FrameHandler() = default;
+
+  // Produce and present one frame for `id`. Called from Core::frame() only
+  // when the surface needs a redraw and can be rendered.
+  virtual void render_surface(SurfaceId id, const SurfaceState& state,
+                              foundation::Timestamp time) = 0;
+
+  // The surface is gone; release anything held for it.
+  virtual void surface_removed(SurfaceId /*id*/) {}
+};
+
 // The engine's side of the platform contract.
 //
 // Shells drive the core through exactly two entry points:
 //   dispatch(event)  for every input, window and lifecycle event;
-//   frame(time)      once per frame the core asked for.
-// Real shells, embedders and tests all use these same two functions; there is
-// no other way to inject input.
+//   frame(id, time)  once per frame a surface asked for.
+// Real shells, embedders and tests all use these two functions; there is no
+// other way to inject input.
 //
-// The core never blocks and never loops. When it has work to show, it calls
-// Shell::request_frame() (at most once until the frame arrives) and does the
-// work inside frame(). It does not request frames while suspended or without
-// a surface.
+// The core never blocks and never loops. When a surface has something new to
+// show, the core calls Surface::request_frame() (at most once until the frame
+// arrives) and does the work inside frame(). It does not request frames while
+// the application is suspended or for surfaces without a drawable area.
+//
+// Reentrancy: a FrameHandler or anything called during dispatch() / frame()
+// may call back into the core. remove_surface() called then is deferred
+// until the outermost dispatch() / frame() returns.
 //
 // Frame pipeline (stages land in later tasks; see docs/architecture.md):
 //   input -> event dispatch -> state update -> rebuild dirty nodes -> layout
 //   -> paint to display list -> render
 class Core {
  public:
-  Core(Shell& shell, foundation::MemoryResource& memory, const foundation::Logger& logger);
+  Core(Platform& platform, foundation::MemoryResource& memory, const foundation::Logger& logger);
   ~Core();
 
   Core(const Core&) = delete;
   Core& operator=(const Core&) = delete;
 
+  // --- Surfaces -------------------------------------------------------------
+
+  // Registers a shell surface and requests its first frame. The surface
+  // must stay alive until it has been removed.
+  [[nodiscard]] foundation::Result<SurfaceId> add_surface(Surface& surface);
+
+  // Unregisters a surface. During dispatch() / frame() the removal is
+  // deferred: the surface stops receiving events and frames immediately, and
+  // is detached when the outermost call returns.
+  [[nodiscard]] foundation::Result<void> remove_surface(SurfaceId id);
+
   // --- Entry points for shells ---------------------------------------------
 
   void dispatch(const Event& event);
-  void frame(foundation::Timestamp timestamp);
+  void frame(SurfaceId id, foundation::Timestamp timestamp);
 
   // --- Services for the engine (and, later, widgets) ------------------------
 
-  // Marks the UI as needing a new frame and asks the shell for one if
-  // rendering is currently possible.
-  void request_redraw();
+  void set_frame_handler(FrameHandler* handler) noexcept { frame_handler_ = handler; }
 
-  // Forwarded to the shell only when the value changes.
-  void set_cursor(CursorShape cursor);
-  void set_ime_cursor_area(const foundation::LogicalRect& area);
+  // Marks the surface as needing a new frame and asks for one if rendering
+  // is currently possible.
+  [[nodiscard]] foundation::Result<void> request_redraw(SurfaceId id);
+  void request_redraw_all();
+
+  // Forwarded to the surface only when the value changes.
+  [[nodiscard]] foundation::Result<void> set_cursor(SurfaceId id, CursorShape cursor);
+  [[nodiscard]] foundation::Result<void> set_ime_cursor_area(SurfaceId id,
+                                                             const foundation::LogicalRect& area);
 
   [[nodiscard]] foundation::Result<void> clipboard_get_text(foundation::String& out);
   [[nodiscard]] foundation::Result<void> clipboard_set_text(std::string_view text);
 
   // --- Observable state -----------------------------------------------------
 
-  [[nodiscard]] const SurfaceState& surface() const noexcept { return surface_; }
-  [[nodiscard]] Lifecycle lifecycle() const noexcept { return lifecycle_; }
-  [[nodiscard]] bool focused() const noexcept { return focused_; }
-  [[nodiscard]] bool close_requested() const noexcept { return close_requested_; }
-  [[nodiscard]] Modifiers modifiers() const noexcept { return modifiers_; }
-  [[nodiscard]] const foundation::Vector<PointerState>& pointers() const noexcept {
-    return pointers_;
-  }
-  [[nodiscard]] const ImePreeditState& ime_preedit() const noexcept { return preedit_; }
+  [[nodiscard]] foundation::Result<const SurfaceState*> surface(SurfaceId id) const noexcept;
+  [[nodiscard]] std::size_t surface_count() const noexcept { return surfaces_.size(); }
 
-  // True while a frame has been requested from the shell and not yet run.
-  [[nodiscard]] bool frame_requested() const noexcept { return frame_requested_; }
-  [[nodiscard]] bool needs_redraw() const noexcept { return needs_redraw_; }
+  // Calls fn(SurfaceId, const SurfaceState&) for every live surface.
+  template <class Fn>
+  void for_each_surface(Fn fn) const {
+    surfaces_.for_each([&](foundation::Handle h, const SurfaceState& s) {
+      if (!s.removal_pending) {
+        fn(SurfaceId{h}, s);
+      }
+    });
+  }
+
+  [[nodiscard]] Lifecycle lifecycle() const noexcept { return lifecycle_; }
+  [[nodiscard]] Modifiers modifiers() const noexcept { return modifiers_; }
+  [[nodiscard]] bool in_dispatch() const noexcept { return dispatch_depth_ > 0; }
   [[nodiscard]] std::uint64_t frames_rendered() const noexcept { return frames_rendered_; }
   [[nodiscard]] std::uint64_t events_dispatched() const noexcept { return events_dispatched_; }
 
@@ -97,38 +162,31 @@ class Core {
   [[nodiscard]] const foundation::Logger& logger() const noexcept { return *logger_; }
 
  private:
-  [[nodiscard]] bool can_render() const noexcept;
-  void request_frame_if_needed();
-  void handle_pointer(const Event& event);
-  void handle_surface(const Event& event);
-  void handle_focus_lost();
-  void handle_text(const Event& event);
-  void render_frame(foundation::Timestamp timestamp);
-  PointerState* find_pointer(PointerId id) noexcept;
-  void remove_pointer(PointerId id) noexcept;
+  // Marks a dispatch()/frame() scope for deferred removals.
+  class DispatchScope;
 
-  Shell* shell_;
+  [[nodiscard]] foundation::Result<SurfaceState*> find_live(SurfaceId id, const char* what);
+  [[nodiscard]] bool can_render(const SurfaceState& s) const noexcept;
+  void request_frame_if_needed(SurfaceState& s);
+  void mark_dirty(SurfaceState& s);
+  void handle_pointer(SurfaceState& s, const Event& event);
+  void handle_surface_info(SurfaceState& s, const Event& event);
+  void handle_focus_lost(SurfaceState& s);
+  void handle_text(SurfaceState& s, const Event& event);
+  void detach(SurfaceId id);
+  void flush_deferred_removals();
+
+  Platform* platform_;
   foundation::MemoryResource* memory_;
   const foundation::Logger* logger_;
+  FrameHandler* frame_handler_ = nullptr;
 
-  SurfaceState surface_;
+  foundation::SlotMap<SurfaceState> surfaces_;
+  foundation::Vector<SurfaceId> pending_removals_;
+  int dispatch_depth_ = 0;
+
   Lifecycle lifecycle_ = Lifecycle::Running;
-  bool focused_ = false;
-  bool close_requested_ = false;
   Modifiers modifiers_;
-  foundation::Vector<PointerState> pointers_;
-  ImePreeditState preedit_;
-
-  bool needs_redraw_ = false;
-  bool frame_requested_ = false;
-  bool has_cursor_ = false;
-  CursorShape cursor_ = CursorShape::Default;
-  bool has_ime_area_ = false;
-  foundation::LogicalRect ime_area_;
-
-  foundation::Timestamp last_event_time_;
-  foundation::Timestamp last_frame_time_;
-  bool has_frame_time_ = false;
   std::uint64_t frames_rendered_ = 0;
   std::uint64_t events_dispatched_ = 0;
 };

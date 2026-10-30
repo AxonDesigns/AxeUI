@@ -313,3 +313,28 @@ UI_TEST_CASE("textured rects carry uv, tint and texture") {
   CHECK(unpack_color(instance.fill_color) == LinearRgbaPremul{0.5f, 0.5f, 0.5f, 0.5f});
   CHECK(list.commands()[0].texture == kTextureB);
 }
+
+UI_TEST_CASE("a reset builder starts a fresh frame without allocating") {
+  DisplayList list(memory());
+  DisplayListBuilder builder(list, memory(), {100, 100}, ScaleFactor{1.0f});
+  for (int frame = 0; frame < 3; ++frame) {
+    builder.reset({200, 100}, ScaleFactor{2.0f});
+    builder.push_clip(LogicalRect::from_xywh(0, 0, 50, 50));
+    CHECK(builder.push_transform(Affine2::translation(1, 1)).has_value());
+    builder.fill_rect(LogicalRect::from_xywh(0, 0, 10, 10), kRed);
+    builder.pop_transform();
+    builder.pop_clip();
+  }
+  const std::size_t allocations = tracker().stats().total_allocations;
+  builder.reset({200, 100}, ScaleFactor{2.0f});
+  CHECK(list.empty());
+  CHECK(builder.current_clip() == PhysicalRect::from_ltrb(0, 0, 200, 100));
+  builder.push_clip(LogicalRect::from_xywh(0, 0, 50, 50));
+  CHECK(builder.push_transform(Affine2::translation(1, 1)).has_value());
+  builder.fill_rect(LogicalRect::from_xywh(0, 0, 10, 10), kRed);
+  builder.pop_transform();
+  builder.pop_clip();
+  CHECK(tracker().stats().total_allocations == allocations);
+  UI_REQUIRE(list.instances().size() == 1);
+  CHECK(bounds_of(list.instances()[0]) == PhysicalRect::from_ltrb(2, 2, 22, 22));
+}

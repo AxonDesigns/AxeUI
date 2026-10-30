@@ -104,11 +104,22 @@ class SlotMap {
     }
   }
 
-  // Calls fn(Handle, T&) for every live object, in slot order.
+  // Calls fn(Handle, T&) for every live object, in slot order. `fn` must
+  // not insert or remove objects.
   template <class Fn>
   void for_each(Fn fn) {
     for (std::size_t i = 0; i < slots_.size(); ++i) {
       Slot& slot = slots_[i];
+      if (slot.value.has_value()) {
+        fn(Handle::make(type_, slot.generation, static_cast<std::uint32_t>(i)), *slot.value);
+      }
+    }
+  }
+
+  template <class Fn>
+  void for_each(Fn fn) const {
+    for (std::size_t i = 0; i < slots_.size(); ++i) {
+      const Slot& slot = slots_[i];
       if (slot.value.has_value()) {
         fn(Handle::make(type_, slot.generation, static_cast<std::uint32_t>(i)), *slot.value);
       }

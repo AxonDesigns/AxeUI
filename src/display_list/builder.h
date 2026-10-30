@@ -57,6 +57,14 @@ class DisplayListBuilder {
                      foundation::PhysicalSize viewport, foundation::ScaleFactor scale);
   ~DisplayListBuilder();
 
+  // Starts a new frame: clears `output`, empties the stacks (keeping their
+  // capacity, so a reused builder does not allocate) and sets a new viewport
+  // and scale. Pushes and pops must be balanced before calling it.
+  void reset(foundation::PhysicalSize viewport, foundation::ScaleFactor scale);
+
+  [[nodiscard]] DisplayList& output() const noexcept { return *output_; }
+  [[nodiscard]] foundation::ScaleFactor scale() const noexcept { return scale_; }
+
   DisplayListBuilder(const DisplayListBuilder&) = delete;
   DisplayListBuilder& operator=(const DisplayListBuilder&) = delete;
 

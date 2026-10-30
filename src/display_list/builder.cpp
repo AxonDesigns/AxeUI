@@ -55,6 +55,17 @@ DisplayListBuilder::DisplayListBuilder(DisplayList& output, foundation::MemoryRe
       snap_to_pixels(PhysicalRect::from_xywh(0.0f, 0.0f, viewport.width, viewport.height)));
 }
 
+void DisplayListBuilder::reset(foundation::PhysicalSize viewport, foundation::ScaleFactor scale) {
+  UI_ASSERT(transforms_.size() == 1 && clips_.size() == 1,
+            "DisplayListBuilder::reset with unbalanced push/pop");
+  output_->clear();
+  scale_ = scale;
+  transforms_.back() = Affine2::identity();
+  clips_.back() =
+      snap_to_pixels(PhysicalRect::from_xywh(0.0f, 0.0f, viewport.width, viewport.height));
+  culled_ = 0;
+}
+
 DisplayListBuilder::~DisplayListBuilder() {
   UI_DEBUG_ASSERT(transforms_.size() == 1 && clips_.size() == 1,
                   "unbalanced push/pop on DisplayListBuilder");
