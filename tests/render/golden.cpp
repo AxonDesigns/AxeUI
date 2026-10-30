@@ -1,8 +1,10 @@
 #include "render/golden.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdlib>
 #include <filesystem>
+#include <string_view>
 #include <vector>
 
 #define STB_IMAGE_IMPLEMENTATION
@@ -36,8 +38,20 @@ bool write_png(const std::filesystem::path& path, const std::uint8_t* rgba, std:
 }  // namespace
 
 bool golden_update_requested() {
+#if defined(_MSC_VER)
+  // MSVC deprecates getenv (C4996); _dupenv_s is its replacement.
+  char* value = nullptr;
+  std::size_t length = 0;
+  if (_dupenv_s(&value, &length, "UI_UPDATE_GOLDENS") != 0 || value == nullptr) {
+    return false;
+  }
+  const bool requested = std::string_view(value) == "1";
+  std::free(value);
+  return requested;
+#else
   const char* value = std::getenv("UI_UPDATE_GOLDENS");
   return value != nullptr && std::string_view(value) == "1";
+#endif
 }
 
 GoldenResult compare_with_golden(std::string_view name, std::span<const std::uint8_t> rgba,

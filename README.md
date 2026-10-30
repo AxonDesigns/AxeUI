@@ -42,8 +42,9 @@ Libraries (static unless noted): `ui_foundation`, `ui_platform`,
 
 - CMake 3.21+, Python 3 (for the API generator check)
 - A C++20 compiler. Verified locally: GCC 13, Clang 18, Emscripten 6.0.13
-  (all on Linux). CI also builds with MSVC 2022 (`windows-2022`) and Apple
-  Clang (`macos-14`).
+  (all on Linux). CI also builds with MSVC and Apple Clang (`macos-15`).
+- Windows: Visual Studio 2026 (MSVC 19.51 or newer). The pinned prebuilt
+  Dawn is built with it, and older toolsets cannot link it.
 - Network access on the first configure: pinned, checksummed dependencies
   (prebuilt Dawn, SDL3 source, emdawnwebgpu) are downloaded into `.deps/`.
   Use `-DUI_ENABLE_RENDERER=OFF` for a build without them.
@@ -52,8 +53,9 @@ Libraries (static unless noted): `ui_foundation`, `ui_platform`,
 
   ```sh
   sudo apt install mesa-vulkan-drivers libvulkan1 libx11-dev libxext-dev \
-    libxrandr-dev libxcursor-dev libxi-dev libxfixes-dev libxkbcommon-dev \
-    libwayland-dev wayland-protocols libegl1-mesa-dev
+    libxrandr-dev libxcursor-dev libxi-dev libxfixes-dev libxtst-dev \
+    libxkbcommon-dev libwayland-dev wayland-protocols libdecor-0-dev \
+    libegl1-mesa-dev
   ```
 - Optional: Node.js 22.18+ (TypeScript smoke test), Dart 3.5+ (Dart smoke test).
 
@@ -98,7 +100,7 @@ view for each window.
 
 ### Windows (MSVC)
 
-From a Developer PowerShell for VS 2022:
+From a Developer PowerShell for VS 2026:
 
 ```powershell
 cmake -S . -B build -DUI_WARNINGS_AS_ERRORS=ON

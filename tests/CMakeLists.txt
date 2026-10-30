@@ -2,7 +2,10 @@
 # Included as a SYSTEM directory so our warning flags do not apply to it.
 add_library(ui_doctest INTERFACE)
 target_include_directories(ui_doctest SYSTEM INTERFACE "${PROJECT_SOURCE_DIR}/third_party/doctest")
-target_compile_definitions(ui_doctest INTERFACE DOCTEST_CONFIG_NO_EXCEPTIONS)
+# USE_STD_HEADERS: doctest's own forward declarations of std types break with
+# newer MSVC STLs when string_view values are stringified (MSVC 14.44+).
+target_compile_definitions(ui_doctest INTERFACE
+  DOCTEST_CONFIG_NO_EXCEPTIONS DOCTEST_CONFIG_USE_STD_HEADERS)
 
 # Harness shared by all test executables (doctest main, leak checker).
 add_library(ui_test_support OBJECT

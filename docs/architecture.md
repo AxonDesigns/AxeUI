@@ -340,7 +340,11 @@ against the same `webgpu_cpp.h`. Consequences:
 
 - MSVC: the package is built against the release CRT, so with the renderer
   enabled every target uses `/MD` and `_ITERATOR_DEBUG_LEVEL=0`, in Debug too
-  (MSVC's debug iterators are off).
+  (MSVC's debug iterators are off). It is built with MSVC 19.51 (Visual
+  Studio 2026, GitHub image `windows-2025-vs2026`) and references STL
+  helpers that older toolsets lack (`__std_min_element_8u`, `__std_rotate`,
+  ...), so building on Windows requires VS 2026. Pick the Dawn release by
+  the toolset it was built with when bumping it.
 - The Linux package has no SwiftShader ICD; headless rendering uses Mesa
   lavapipe through the Vulkan loader (see "Golden images").
 - `UI_DAWN_DIR` points the build at an already-extracted package; that is how

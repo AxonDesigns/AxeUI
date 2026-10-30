@@ -26,14 +26,16 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # The prebuilt Dawn is built with MSVC 19.51 (VS 2026) on this image;
+          # older toolsets cannot link it (newer STL vectorized helpers).
           - name: Windows MSVC (Debug)
-            os: windows-2022
+            os: windows-2025-vs2026
             build_type: Debug
           - name: Windows MSVC (Release)
-            os: windows-2022
+            os: windows-2025-vs2026
             build_type: Release
           - name: macOS Clang (Debug)
-            os: macos-14
+            os: macos-15
             build_type: Debug
           # Golden reference configuration: Linux + Mesa lavapipe.
           - name: Linux GCC (Debug, golden reference)
@@ -55,7 +57,7 @@ jobs:
       ASAN_OPTIONS: detect_leaks=1:abort_on_error=1
       UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install Linux dependencies (lavapipe, X11, Wayland)
         if: runner.os == 'Linux'
@@ -64,11 +66,12 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             mesa-vulkan-drivers libvulkan1 \
             libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxi-dev libxfixes-dev \
-            libxkbcommon-dev libwayland-dev wayland-protocols libegl1-mesa-dev
+            libxtst-dev libxkbcommon-dev libwayland-dev wayland-protocols libdecor-0-dev \
+            libegl1-mesa-dev
           dpkg -s mesa-vulkan-drivers | grep '^Version'
 
       - name: Cache pinned dependencies (Dawn, SDL3)
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: .deps
           key: deps-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('cmake/ui_dependencies.cmake') }}
@@ -95,7 +98,7 @@ jobs:
 
       - name: Upload golden-image failures
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: golden-failures-${{ matrix.os }}-${{ matrix.build_type }}-${{ strategy.job-index }}
           path: build/golden-failures
@@ -105,20 +108,20 @@ jobs:
     name: Emscripten (Node, emdawnwebgpu, TypeScript)
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Cache pinned dependencies (emdawnwebgpu)
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: .deps
           key: deps-emscripten-${{ hashFiles('cmake/ui_dependencies.cmake') }}
 
-      - uses: mymindstorm/setup-emsdk@v14
+      - uses: mymindstorm/setup-emsdk@v16
         with:
           version: ${{ env.EMSDK_VERSION }}
           actions-cache-folder: emsdk-cache
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
 
@@ -142,7 +145,7 @@ jobs:
     name: C API description and generated files
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Generated files match api/ui_api.json
         run: python3 tools/gen_api.py --check
 
@@ -150,7 +153,7 @@ jobs:
     name: clang-format
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install clang-format
         run: pipx install clang-format==18.1.8
       - name: Check formatting

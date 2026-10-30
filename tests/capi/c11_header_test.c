@@ -28,6 +28,7 @@ _Static_assert(offsetof(ui_event, size) == 0, "structs start with their size");
 _Static_assert(offsetof(ui_allocation_stats, size) == 0, "structs start with their size");
 _Static_assert(sizeof(ui_surface_desc) == 20, "ui_surface_desc has no padding");
 _Static_assert(sizeof(ui_allocation_stats) == 48, "ui_allocation_stats has no padding");
+_Static_assert(UI_MAKE_VERSION(1, 2, 3) == 0x010203u, "version packing");
 
 static int failures = 0;
 
@@ -64,7 +65,6 @@ int main(void) {
   struct log_counter counter = {0, UI_OK};
 
   EXPECT(ui_get_version() == UI_VERSION);
-  EXPECT(UI_MAKE_VERSION(1, 2, 3) == 0x010203u);
   EXPECT(strcmp(ui_error_code_name(UI_ERROR_STALE_HANDLE), "UI_ERROR_STALE_HANDLE") == 0);
 
   memset(&desc, 0, sizeof(desc));
