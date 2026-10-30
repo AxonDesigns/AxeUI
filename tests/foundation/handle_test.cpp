@@ -5,13 +5,20 @@
 
 using namespace ui::foundation;
 
-TEST_CASE("handle bit layout is [type:8 | generation:24 | index:32]") {
-  const Handle h = Handle::make(HandleType::Texture, 0x123456u, 0x89ABCDEFu);
-  CHECK(h.bits() == 0x02123456'89ABCDEFull);
+TEST_CASE("handle bit layout is [0:11 | type:6 | generation:20 | index:27]") {
+  const Handle h = Handle::make(HandleType::Texture, 0xABCDEu, 0x5432101u);
+  CHECK(h.bits() == ((2ull << 47) | (0xABCDEull << 27) | 0x5432101ull));
   CHECK(h.type() == HandleType::Texture);
-  CHECK(h.generation() == 0x123456u);
-  CHECK(h.index() == 0x89ABCDEFu);
+  CHECK(h.generation() == 0xABCDEu);
+  CHECK(h.index() == 0x5432101u);
   CHECK(Handle::from_bits(h.bits()) == h);
+
+  // Every handle fits in 53 bits: exact as a JavaScript number.
+  const Handle max = Handle::make(static_cast<HandleType>(Handle::kMaxType),
+                                  Handle::kMaxGeneration, Handle::kIndexMask);
+  CHECK(max.bits() == (1ull << 53) - 1);
+  CHECK(max.is_well_formed());
+  CHECK_FALSE(Handle::from_bits(1ull << 53).is_well_formed());
 
   CHECK(Handle{}.is_null());
   CHECK(Handle{}.bits() == 0);
@@ -77,6 +84,9 @@ UI_TEST_CASE("wrong-type, zero and forged handles are errors, not UB") {
         ErrorCode::StaleHandle);
   CHECK(nodes.get(Handle::make(HandleType::Node, 0, node.index())).error().code ==
         ErrorCode::StaleHandle);
+  // Bits above the 53-bit layout: rejected even if the low bits match.
+  CHECK(nodes.get(Handle::from_bits(node.bits() | (1ull << 60))).error().code ==
+        ErrorCode::InvalidHandle);
 }
 
 UI_TEST_CASE("freed slots are reused in FIFO order") {

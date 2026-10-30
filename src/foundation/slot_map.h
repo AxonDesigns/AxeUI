@@ -19,7 +19,7 @@ namespace ui::foundation {
 //   become stale (StaleHandle) rather than aliasing a later object.
 // - A slot whose generation would wrap past Handle::kMaxGeneration is retired
 //   permanently instead of being reused, so an old handle can never match a
-//   new object. Retiring costs one slot per 2^24 - 1 reuses.
+//   new object. Retiring costs one slot per 2^20 - 1 reuses.
 // - Freed slots are reused in FIFO order, spreading generation use across
 //   slots.
 //
@@ -130,6 +130,9 @@ class SlotMap {
   static auto find(Self& self, Handle handle) noexcept -> Result<decltype(&self.slots_[0])> {
     if (handle.is_null()) {
       return fail(Error{ErrorCode::InvalidHandle, "null handle"});
+    }
+    if (!handle.is_well_formed()) {
+      return fail(Error{ErrorCode::InvalidHandle, "value is not a handle (bits above 52 set)"});
     }
     if (handle.type() != self.type_) {
       return fail(Error{ErrorCode::WrongHandleType, "handle refers to a different object type"});
