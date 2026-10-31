@@ -416,13 +416,21 @@ Blending must happen in linear space, so the renderer picks, per surface:
 3. **Shader encoding** (`encode_srgb` pipeline constant) when neither works.
    Blending then happens on encoded values. This is the documented fallback.
 
-Expected path per platform: Vulkan on Linux and Windows, Metal on macOS, and
-D3D12 on Windows normally offer an sRGB format (path 1); browsers use path 2.
-`Renderer::color_output_path(id)` reports the choice and the renderer logs a
-warning on path 3. **Verified here:** only the offscreen path (RGBA8-sRGB,
-Linux/lavapipe). The surface paths could not be exercised on the machine this
-was built on (no display), so the per-platform list is the expectation from
-the WebGPU spec and Dawn's backends, not a measurement.
+`Renderer::color_output_path(id)` reports the choice; every configuration is
+logged at Info level (size, format, path, present mode, offered formats), and
+path 3 also logs a warning.
+
+| Platform | Measured | Path |
+|---|---|---|
+| Linux, KDE Plasma 6 Wayland, NVIDIA GTX 1650 (driver 615.71) | offers `RGB10A2Unorm`, `BGRA8UnormSrgb`, `BGRA8Unorm`, `RGBA8UnormSrgb`; Fifo and Mailbox | 1 (`BGRA8UnormSrgb`) |
+| Linux, X11 via Xwayland, same GPU | offers `BGRA8Unorm`, `BGRA8UnormSrgb`; Fifo only | 1 (`BGRA8UnormSrgb`) |
+| Linux headless, Mesa lavapipe | offscreen RGBA8-sRGB target | 1 |
+| macOS (Metal), Windows (D3D12) | not measured with a window yet; expected to offer an sRGB format | 1 (expected) |
+| Browsers | expected non-sRGB canvas formats | 2 (expected) |
+
+On the Wayland and X11 windows above, solid colors read back from screenshots
+match their sRGB source values exactly (e.g. `(220, 50, 47)` in, `(220, 50,
+47)` on screen): blending is linear and the swapchain encodes once.
 
 ### Surface status handling
 
@@ -436,12 +444,17 @@ statuses no longer exist as separate values in current `webgpu.h`; both
 surface as `Error`. A zero-size (minimized) surface is skipped before any of
 this. The frame driver turns every skip into a new frame request.
 
-These paths need a real swapchain. Dawn offers no way to force a surface
-status headlessly, so they are **not covered by automated tests** and could
-not be verified by hand on the build machine. To verify by hand on a desktop:
-resize a window quickly (Outdated/Suboptimal); minimize and restore (zero
-size); on Windows, lock the screen or change the display mode (Lost); watch
-the log for "skipped" outcomes followed by correct frames.
+These paths need a real swapchain; Dawn cannot force a surface status
+headlessly, so they are **not covered by automated tests**. Verified by hand
+on Linux (NVIDIA, Wayland and X11): a burst of 24 client-side resizes in 1.5 s
+on Wayland, and 60 server-side resizes (`xdotool windowsize`) in 2 s on X11
+while animating at 260 fps, each reconfigured the swapchain every time and
+skipped **no** frames. The renderer reconfigures as soon as the size it is
+given changes, before acquiring, so Outdated/Suboptimal did not occur on this
+driver and those branches were not exercised. Lost and Timeout were not
+observed either. To probe them elsewhere: on Windows, lock the screen or change
+the display mode (Lost); watch the log for "frame skipped" lines followed by
+correct frames.
 
 ### Device loss
 
@@ -481,17 +494,25 @@ renderer therefore:
   LowLatency`, the default). Mailbox is tear-free and never blocks, so windows
   cannot stall each other;
 - falls back to **Fifo** elsewhere (always available);
-- leaves pacing to the shell. The SDL shell delivers each window's frame no
-  earlier than one refresh period (from that window's display) after the
-  previous one. With Mailbox this pacing is what keeps a window from rendering
-  frames it cannot show; with Fifo it keeps windows from queuing more than
-  one frame each.
+- leaves pacing to the shell. The SDL shell runs a fixed-rate schedule per
+  window at its display's refresh rate (see "SDL3 desktop shell"). With
+  Mailbox this pacing is what keeps a window from rendering frames it cannot
+  show; with Fifo it keeps windows from queuing more than one frame each.
 
-**Not measured.** Measuring this needs two real windows on a display, and the
-machine this was built on has none (a headless VM). The two-window frame rate
-with Fifo and Mailbox is still to be recorded on each desktop OS, using the
-example with two continuously animating windows and the shell's frame
-timestamps. Record the numbers here.
+**Measured** with `hello_surfaces --animate --stats --present=...` (two
+continuously animating windows) on Linux, KDE Plasma 6 Wayland, NVIDIA GTX
+1650, monitors at 260 Hz (scale 1.325) and 71.91 Hz (scale 1.0):
+
+| Present mode | Windows on different monitors (260 Hz + 72 Hz) | Both windows on the 260 Hz monitor |
+|---|---|---|
+| Mailbox (`LowLatency`, default) | 259.9 + 72.0 fps | 260.0 + 260.0 fps |
+| Fifo (`Vsync`) | **71.9 + 71.9 fps** | 260.2 + 260.0 fps |
+
+With Fifo, the window on the slower monitor blocks in present and drags every
+window on the UI thread down to its refresh rate; two windows on the same
+monitor do not halve each other. Mailbox keeps windows independent, which is
+why it is the default. On X11 (Xwayland) the same driver offers only Fifo,
+and there the two windows still ran independently (260 + 72 fps).
 
 ## SDL3 desktop shell
 
@@ -503,10 +524,20 @@ the pinned source release with only the video and events subsystems.
   reports its pixel size, display scale (`SDL_GetWindowDisplayScale`) and
   refresh rate. Size, scale and display changes (including moving to a
   monitor with a different scale) dispatch `ScaleFactorChanged`/`Resize`.
-  Minimizing reports a zero size, so no frames are requested and Fifo presents
-  cannot block. Drivers that learn a window's size only from the first
-  configure event (Wayland) are covered: the shell estimates the size until
-  the real one arrives as a Resize.
+  Window sizes passed to `create_window()`/`set_size()` are logical pixels,
+  converted to SDL window coordinates with `display scale / pixel density`.
+  That is identity on Wayland and macOS, where window coordinates are already
+  logical, and multiplies by the content scale on X11 and Windows, where they
+  are pixels (without it, an X11 window at scale 1.323 came out 1.323× too
+  small). Minimized, hidden or occluded windows (`SDL_EVENT_WINDOW_MINIMIZED`,
+  `HIDDEN`, `OCCLUDED`; Wayland compositors report minimized windows as
+  suspended, which SDL maps to occluded) report a zero size, so the core stops
+  requesting frames; `EXPOSED`/`SHOWN`/`RESTORED` bring the real size back.
+  Measured on KWin: without this, minimized windows kept rendering at 260 fps
+  with Mailbox, and with Fifo the compositor throttled presents to ~31 Hz,
+  slowing every window. Drivers that learn a window's size only from the
+  first configure event (Wayland) are covered: the shell estimates the size
+  until the real one arrives as a Resize.
 - **Native handles**: Win32 HWND/HINSTANCE, Xlib display/window and Wayland
   display/surface from SDL window properties. On macOS the shell creates a
   `CAMetalLayer`-backed view with `SDL_Metal_CreateView` (window flag
@@ -526,11 +557,29 @@ the pinned source release with only the video and events subsystems.
 - **Loop**: the application owns it: `while (shell.pump()) { ... }`. `pump()`
   sleeps in `SDL_WaitEventTimeout`, indefinitely when no window wants a
   frame, otherwise until the earliest frame deadline. It never busy-loops.
+- **Pacing**: each window has a fixed-rate schedule at its display's refresh
+  rate. A delivered frame advances the schedule by exactly one period, and a
+  window more than a period behind (after idling) restarts from now instead of
+  bursting. A frame counts as due within 1 ms of its slot, because SDL waits
+  in whole milliseconds. Measured: 259.9–260.0 fps at 260 Hz and 72.0 fps at
+  71.91 Hz. The first version, "no earlier than 7/8 of a period after the
+  last frame", ran at 79 fps on the 72 Hz monitor (rendering frames that were
+  never shown) and 249 fps at 260 Hz (millisecond rounding).
 - **Hazards from "Known platform hazards"**: (1) during the Windows modal
   move/resize loop and macOS live resize, SDL sends live-resize expose events
   (`data1 == 1`) to event watchers, and the shell renders the window from its
   watcher. (2) All window calls assert the main thread; only `wake()` may come
   from elsewhere.
+
+**Verified by hand** on Linux (KDE Plasma 6, NVIDIA GTX 1650, two monitors at
+scales 1.0 and 1.325), natively on Wayland and on X11 via Xwayland: both
+windows render correctly (checked against screenshots); dragging a window to
+the other monitor reconfigures it at the new scale with the same logical size
+and correct hit testing; hover and press change the button's color; closing
+the main window quits; resizing, minimize/restore and forced device loss
+(`--lose-device`, textures restored from their CPU copies) all recover with no
+skipped frames. An idle example renders nothing (0 fps) and redraws only on
+input. Not yet run on Windows or macOS with a display.
 
 `examples/hello_surfaces` opens two windows. The main one draws bordered
 rounded rects with different radii, nested clips, a textured rect, and a
@@ -588,8 +637,10 @@ boundary; everything else is generated from a description of it.
   host's thread-safe wake callback.
 - **Artifacts**: `ui_shared` builds `libaxeui` (`.so`/`.dylib`/`.dll`). All
   code is compiled with hidden visibility, so only `UI_API` (`ui_*`) functions
-  are exported; on Linux, static archives are also excluded from export, and a
-  CTest checks the exported symbols on Linux and macOS. Under Emscripten,
+  are exported. On Linux a linker version script (`cmake/ui_exports.map`)
+  additionally restricts exports to `ui_*`, because Clang gives libstdc++'s
+  inline `std::` instantiations default visibility. A CTest checks the
+  exported symbols on Linux and macOS. Under Emscripten,
   `ui_wasm` builds an ES module (`axeui.mjs` + `axeui.wasm`; `MODULARIZE`,
   `EXPORT_ES6`) exporting exactly the generated function list.
 - **Smoke tests** (CTest, CI): TypeScript runs under Node (native type
@@ -736,3 +787,19 @@ copied, translated or consulted.
    idle). That is SDL's fallback, not the shell loop: X11, Wayland, Windows
    and Cocoa have blocking waits. Do not use the dummy driver to measure idle
    CPU.
+9. **Hidden windows and blocking presents.** Compositors do not show
+   minimized or fully covered windows, and keep throttling their presents:
+   KWin limited Fifo presents of minimized windows to ~31 Hz, which slowed
+   every window on the UI thread. Shells must report hidden windows (zero
+   size) so the core stops requesting frames for them; the web shell has the
+   same concern with background tabs.
+10. **Window coordinates differ per platform.** SDL window coordinates are
+    logical pixels on Wayland and macOS, but raw pixels on X11 and Windows,
+    where the display's content scale is only a hint. Shells must convert
+    logical sizes themselves (the SDL3 shell does).
+11. **Synthetic input under KDE Wayland.** XTest input (`xdotool`) into
+    Xwayland windows needs an "input emulation" permission prompt, and its
+    coordinates do not match KWin's layout at fractional scales, so automated
+    pointer tests on such desktops are unreliable. Input translation is
+    covered by the shell tests on SDL's dummy driver; interactive checks were
+    done by hand.

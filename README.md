@@ -29,7 +29,7 @@ bindings/              generated TypeScript and Dart bindings + smoke tests
 tools/                 gen_api.py (bindings generator), update_goldens.sh
 tests/                 doctest unit tests, renderer and golden-image tests
 tests/goldens/         reference images (Linux, Mesa lavapipe)
-third_party/           doctest 2.4.11 (MIT), stb_image/stb_image_write (test only)
+third_party/           doctest 2.5.3 (MIT), stb_image/stb_image_write (test only)
 cmake/                 build settings, pinned dependencies, helper scripts
 ```
 
@@ -41,8 +41,9 @@ Libraries (static unless noted): `ui_foundation`, `ui_platform`,
 ## Requirements
 
 - CMake 3.21+, Python 3 (for the API generator check)
-- A C++20 compiler. Verified locally: GCC 13, Clang 18, Emscripten 6.0.13
-  (all on Linux). CI also builds with MSVC and Apple Clang (`macos-15`).
+- A C++20 compiler. Verified: GCC 13 and 16, Clang 18 and 22, Emscripten
+  6.0.13 (Linux), MSVC 19.51 (CI, `windows-2025-vs2026`) and Apple Clang
+  (CI, `macos-15`).
 - Windows: Visual Studio 2026 (MSVC 19.51 or newer). The pinned prebuilt
   Dawn is built with it, and older toolsets cannot link it.
 - Network access on the first configure: pinned, checksummed dependencies
@@ -131,6 +132,22 @@ rects, nested clips, a textured rect, and a button that reacts to hover and
 click. Close the second window independently; close the main window to quit.
 Resize the windows or drag them to a monitor with a different scale factor:
 they stay sharp and correctly sized.
+
+Options for display testing:
+
+| Option | Effect |
+|---|---|
+| `--stats` | print each window's frame rate, size, scale and refresh rate every second, and button interactions |
+| `--animate` | redraw continuously (a moving bar in each window) |
+| `--present=vsync` | Fifo everywhere instead of the default low-latency mode (Mailbox where available) |
+| `--seconds=N` | quit after N seconds |
+| `--script` | resize the main window on a timer, including a burst of rapid resizes |
+| `--move-second=X,Y` | move the second window after 2 s (where clients may position windows, e.g. X11) |
+| `--lose-device=N` | force GPU device loss after N seconds; the renderer recovers |
+
+`SDL_VIDEO_DRIVER=x11` runs the example through X11/Xwayland on a Wayland
+desktop. Surface configurations (format, color path, present mode) are logged
+at startup.
 
 ## Build options
 

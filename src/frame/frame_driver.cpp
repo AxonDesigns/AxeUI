@@ -1,6 +1,7 @@
 #include "frame/frame_driver.h"
 
 #include <algorithm>
+#include <cinttypes>
 
 namespace ui::frame {
 
@@ -66,6 +67,12 @@ void FrameDriver::render_surface(platform::SurfaceId id, const platform::Surface
     case PresentOutcome::SkippedLost:
     case PresentOutcome::SkippedDeviceLost:
       ++skipped_;
+      UI_LOGF(core_->logger(), LogLevel::Info, ErrorCode::Ok,
+              "surface 0x%" PRIx64 ": frame skipped (%s), retrying", id.bits(),
+              *outcome == PresentOutcome::SkippedTimeout    ? "timeout"
+              : *outcome == PresentOutcome::SkippedOutdated ? "outdated"
+              : *outcome == PresentOutcome::SkippedLost     ? "surface lost"
+                                                            : "device lost");
       static_cast<void>(core_->request_redraw(id));  // Try again next frame.
       break;
   }

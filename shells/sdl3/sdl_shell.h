@@ -23,7 +23,7 @@ namespace ui::sdl3 {
 
 struct WindowDesc {
   const char* title = "AxeUI";
-  int width = 800;  // Logical size at creation (SDL window coordinates).
+  int width = 800;  // Size at creation, in logical pixels.
   int height = 600;
   bool resizable = true;
 };
@@ -41,6 +41,15 @@ class SdlWindow final : public platform::Surface {
   [[nodiscard]] std::uint32_t sdl_window_id() const noexcept { return window_id_; }
 
   void set_title(const char* title);
+
+  // Requests a new size in logical pixels. The window manager may adjust it;
+  // the result arrives as a Resize.
+  void set_size(float width, float height);
+  // Requests a position in desktop coordinates. Ignored where clients cannot
+  // place windows (Wayland).
+  void set_position(int x, int y);
+  // Current position in desktop coordinates; (0, 0) where unknown (Wayland).
+  void position(int& x, int& y) const;
 
   // Re-reads size, scale and refresh rate from SDL and dispatches
   // ScaleFactorChanged / Resize for what changed.
@@ -64,6 +73,10 @@ class SdlWindow final : public platform::Surface {
   friend class SdlShell;
 
   [[nodiscard]] platform::SurfaceInfo query_info() const;
+  // Logical pixels -> SDL window coordinates. Identity where window
+  // coordinates are already logical (Wayland, macOS); x content scale where
+  // they are pixels (X11, Windows).
+  [[nodiscard]] float logical_to_window_factor() const noexcept;
 
   SdlShell* shell_;
   SDL_Window* window_;
@@ -73,6 +86,9 @@ class SdlWindow final : public platform::Surface {
   platform::SurfaceId id_;
   platform::SurfaceInfo info_;
   bool minimized_ = false;
+  // Hidden or fully covered: SDL_EVENT_WINDOW_OCCLUDED / HIDDEN (on Wayland,
+  // KWin and GNOME mark minimized windows "suspended", reported as occluded).
+  bool occluded_ = false;
   bool composing_ = false;  // IME composition in progress.
   bool frame_pending_ = false;
   std::int64_t next_frame_ns_ = 0;  // Earliest time for the next frame (pacing).

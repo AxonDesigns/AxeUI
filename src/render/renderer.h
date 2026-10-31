@@ -166,6 +166,7 @@ class Renderer final {
     wgpu::TextureFormat format = wgpu::TextureFormat::Undefined;       // Configured format.
     wgpu::TextureFormat view_format = wgpu::TextureFormat::Undefined;  // Render format.
     ColorOutputPath color_path = ColorOutputPath::SrgbFormat;
+    wgpu::PresentMode present_mode = wgpu::PresentMode::Undefined;
     FrameResources frame;
     // Surfaces without a native handle (NullSurface, tools, tests) render
     // into this texture instead of a swapchain.

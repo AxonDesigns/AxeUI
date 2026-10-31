@@ -1,7 +1,9 @@
 #include "render/renderer.h"
 
 #include <algorithm>
+#include <cinttypes>
 #include <cmath>
+#include <cstdio>
 #include <cstring>
 
 #include "display_list/instance.h"
@@ -35,6 +37,52 @@ wgpu::TextureFormat srgb_variant(wgpu::TextureFormat f) noexcept {
     default:
       return wgpu::TextureFormat::Undefined;
   }
+}
+
+const char* format_name(wgpu::TextureFormat f) noexcept {
+  switch (f) {
+    case wgpu::TextureFormat::BGRA8Unorm:
+      return "BGRA8Unorm";
+    case wgpu::TextureFormat::BGRA8UnormSrgb:
+      return "BGRA8UnormSrgb";
+    case wgpu::TextureFormat::RGBA8Unorm:
+      return "RGBA8Unorm";
+    case wgpu::TextureFormat::RGBA8UnormSrgb:
+      return "RGBA8UnormSrgb";
+    case wgpu::TextureFormat::RGB10A2Unorm:
+      return "RGB10A2Unorm";
+    case wgpu::TextureFormat::RGBA16Float:
+      return "RGBA16Float";
+    default:
+      return "other";
+  }
+}
+
+const char* present_mode_name(wgpu::PresentMode m) noexcept {
+  switch (m) {
+    case wgpu::PresentMode::Fifo:
+      return "Fifo";
+    case wgpu::PresentMode::FifoRelaxed:
+      return "FifoRelaxed";
+    case wgpu::PresentMode::Immediate:
+      return "Immediate";
+    case wgpu::PresentMode::Mailbox:
+      return "Mailbox";
+    default:
+      return "Undefined";
+  }
+}
+
+const char* color_path_name(ColorOutputPath p) noexcept {
+  switch (p) {
+    case ColorOutputPath::SrgbFormat:
+      return "sRGB format";
+    case ColorOutputPath::SrgbViewFormat:
+      return "sRGB view format";
+    case ColorOutputPath::ShaderEncode:
+      return "shader encoding";
+  }
+  return "unknown";
 }
 
 std::uint32_t to_pixels(float v) noexcept {
@@ -605,6 +653,21 @@ foundation::Result<void> Renderer::configure(SurfaceTarget& target, std::uint32_
   target.reconfigure = false;
   target.width = width;
   target.height = height;
+  target.present_mode = config.presentMode;
+  if (logger_->enabled(LogLevel::Info)) {
+    char offered[160] = {};
+    std::size_t used = 0;
+    for (std::size_t i = 0; i < caps.formatCount && used + 20 < sizeof(offered); ++i) {
+      const int n = std::snprintf(offered + used, sizeof(offered) - used, "%s%s", i == 0 ? "" : ",",
+                                  format_name(caps.formats[i]));
+      used += n > 0 ? static_cast<std::size_t>(n) : 0;
+    }
+    UI_LOGF(*logger_, LogLevel::Info, ErrorCode::Ok,
+            "surface 0x%" PRIx64 " configured %ux%u: %s via %s (offered %s), present %s, alpha %s",
+            target.id.bits(), width, height, format_name(target.view_format),
+            color_path_name(target.color_path), offered, present_mode_name(config.presentMode),
+            config.alphaMode == wgpu::CompositeAlphaMode::Opaque ? "opaque" : "auto");
+  }
   return {};
 }
 

@@ -24,6 +24,9 @@ using platform::PointerKind;
 namespace {
 
 constexpr std::int64_t kDefaultFrameNs = 16'666'667;  // 60 Hz when the refresh rate is unknown.
+// A frame is due this close to its scheduled time. SDL waits in whole
+// milliseconds; waking up to 1 ms early is accepted instead of spinning.
+constexpr std::int64_t kFrameSlackNs = 1'000'000;
 // Pointer id namespaces, so mouse, touch and pen ids never collide.
 constexpr std::uint64_t kTouchIdBase = 1ull << 62;
 constexpr std::uint64_t kPenIdBase = 2ull << 62;
@@ -162,9 +165,11 @@ platform::SurfaceInfo SdlWindow::query_info() const {
   if (const SDL_DisplayMode* mode = SDL_GetCurrentDisplayMode(SDL_GetDisplayForWindow(window_))) {
     refresh = mode->refresh_rate;
   }
-  if (minimized_) {
-    // A minimized window has nothing to draw; a zero size stops the core
-    // from requesting frames (and keeps Fifo presents from blocking).
+  if (minimized_ || occluded_) {
+    // A minimized or hidden window has nothing to draw; a zero size stops the
+    // core from requesting frames. Presenting to an invisible surface wastes
+    // GPU time (Mailbox) or gets throttled by the compositor (Fifo: ~30 Hz on
+    // KWin), which would slow every window on the same UI thread.
     width = 0;
     height = 0;
   }
@@ -246,6 +251,29 @@ void SdlWindow::attach(platform::Core* core, platform::SurfaceId id) noexcept {
 }
 
 void SdlWindow::set_title(const char* title) { SDL_SetWindowTitle(window_, title); }
+
+float SdlWindow::logical_to_window_factor() const noexcept {
+  const float density = SDL_GetWindowPixelDensity(window_);
+  float scale = SDL_GetWindowDisplayScale(window_);
+  if (!foundation::ScaleFactor::is_valid(scale)) {
+    scale = 1.0f;
+  }
+  return scale / (density > 0.0f ? density : 1.0f);
+}
+
+void SdlWindow::set_size(float width, float height) {
+  const float factor = logical_to_window_factor();
+  SDL_SetWindowSize(window_, static_cast<int>(std::lround(width * factor)),
+                    static_cast<int>(std::lround(height * factor)));
+}
+
+void SdlWindow::set_position(int x, int y) { SDL_SetWindowPosition(window_, x, y); }
+
+void SdlWindow::position(int& x, int& y) const {
+  x = 0;
+  y = 0;
+  SDL_GetWindowPosition(window_, &x, &y);
+}
 
 // --- SdlShell ----------------------------------------------------------------------
 
@@ -343,6 +371,15 @@ foundation::Result<SdlWindow*> SdlShell::create_window(const WindowDesc& desc) {
   }
   SdlWindow* result = created->get();
   windows_.push_back(std::move(created).value());
+  // The requested size is in logical pixels. Where SDL window coordinates
+  // are pixels (X11, Windows), the window was created too small for the
+  // display's content scale: correct it now that the display is known.
+  if (const float factor = result->logical_to_window_factor(); std::fabs(factor - 1.0f) > 0.01f) {
+    result->set_size(static_cast<float>(desc.width), static_cast<float>(desc.height));
+    // X11 applies the size asynchronously; wait so the first frame uses it.
+    SDL_SyncWindow(window);
+    result->info_ = result->query_info();
+  }
   SDL_StartTextInput(window);  // Per-window text input and IME.
   if (auto id = core_->add_surface(*result); !id) {
     windows_.pop_back();
@@ -389,8 +426,9 @@ bool SdlShell::pump() {
   }
   std::int32_t timeout_ms = -1;  // Wait indefinitely: nothing to draw.
   if (deadline >= 0) {
+    // Round down: the frame counts as due within kFrameSlackNs of its time.
     const std::int64_t wait = std::max<std::int64_t>(0, deadline - now_ns());
-    timeout_ms = static_cast<std::int32_t>((wait + 999'999) / 1'000'000);
+    timeout_ms = static_cast<std::int32_t>(wait / 1'000'000);
   }
   SDL_Event event;
   if (SDL_WaitEventTimeout(&event, timeout_ms)) {
@@ -407,7 +445,7 @@ void SdlShell::deliver_due_frames(std::int64_t now) {
   // Index loop: a frame may lead to windows being added.
   for (std::size_t i = 0; i < windows_.size(); ++i) {
     SdlWindow& window = *windows_[i];
-    if (window.frame_pending_ && now >= window.next_frame_ns_) {
+    if (window.frame_pending_ && now + kFrameSlackNs >= window.next_frame_ns_) {
       deliver_frame(window, now);
     }
   }
@@ -419,8 +457,14 @@ void SdlShell::deliver_frame(SdlWindow& window, std::int64_t now) {
   const std::int64_t period =
       hz > 1.0f ? static_cast<std::int64_t>(1'000'000'000.0 / static_cast<double>(hz))
                 : kDefaultFrameNs;
-  // Allow a little early so timer jitter does not skip a vsync.
-  window.next_frame_ns_ = now + period - period / 8;
+  // Fixed-rate schedule: advance by exactly one period, so the average frame
+  // rate equals the display's refresh rate even when presents never block
+  // (Mailbox). After falling more than a period behind (idle, a stall),
+  // restart the schedule from now instead of catching up in a burst.
+  if (now - window.next_frame_ns_ > period) {
+    window.next_frame_ns_ = now;
+  }
+  window.next_frame_ns_ += period;
   if (core_ != nullptr && !window.id().is_null()) {
     core_->frame(window.id(), Timestamp{now});
   }
@@ -512,7 +556,17 @@ void SdlShell::handle_window_event(SdlWindow& window, const SDL_Event& event, Ti
       window.minimized_ = false;
       window.update_info(time);
       break;
+    case SDL_EVENT_WINDOW_OCCLUDED:
+    case SDL_EVENT_WINDOW_HIDDEN:
+      window.occluded_ = true;
+      window.update_info(time);
+      break;
     case SDL_EVENT_WINDOW_EXPOSED:
+    case SDL_EVENT_WINDOW_SHOWN:
+      if (window.occluded_) {
+        window.occluded_ = false;
+        window.update_info(time);  // Restores the real size: a Resize.
+      }
       static_cast<void>(core_->request_redraw(id));
       break;
     case SDL_EVENT_WINDOW_FOCUS_GAINED:
