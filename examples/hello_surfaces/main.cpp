@@ -87,7 +87,14 @@ Options parse_options(int argc, char** argv) {
     } else if (std::strncmp(arg, "--lose-device=", 14) == 0) {
       options.lose_device = std::atof(arg + 14);
     } else if (std::strncmp(arg, "--move-second=", 14) == 0) {
-      options.move_second = std::sscanf(arg + 14, "%d,%d", &options.move_x, &options.move_y) == 2;
+      // "X,Y" (strtol rather than sscanf, which MSVC deprecates: C4996).
+      char* end = nullptr;
+      options.move_x = static_cast<int>(std::strtol(arg + 14, &end, 10));
+      if (end != arg + 14 && *end == ',') {
+        const char* y = end + 1;
+        options.move_y = static_cast<int>(std::strtol(y, &end, 10));
+        options.move_second = end != y && *end == '\0';
+      }
     } else {
       static_cast<void>(std::fprintf(stderr, "unknown option: %s\n", arg));
     }
