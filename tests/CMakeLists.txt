@@ -1,11 +1,21 @@
-# doctest, vendored from https://github.com/doctest/doctest (v2.4.11, MIT).
+# doctest, vendored from https://github.com/doctest/doctest (v2.5.3, MIT).
 # Included as a SYSTEM directory so our warning flags do not apply to it.
 add_library(ui_doctest INTERFACE)
 target_include_directories(ui_doctest SYSTEM INTERFACE "${PROJECT_SOURCE_DIR}/third_party/doctest")
-# USE_STD_HEADERS: doctest's own forward declarations of std types break with
-# newer MSVC STLs when string_view values are stringified (MSVC 14.44+).
+target_compile_definitions(ui_doctest INTERFACE DOCTEST_CONFIG_NO_EXCEPTIONS)
+# MSVC only: doctest's own forward declarations of std types break with newer
+# MSVC STLs when string_view values are stringified (MSVC 14.44+). Elsewhere
+# the define would pull in <ciso646>, which libstdc++ 16 deprecates in C++20
+# with a #warning that Clang turns into an error.
 target_compile_definitions(ui_doctest INTERFACE
-  DOCTEST_CONFIG_NO_EXCEPTIONS DOCTEST_CONFIG_USE_STD_HEADERS)
+  $<$<CXX_COMPILER_ID:MSVC>:DOCTEST_CONFIG_USE_STD_HEADERS>)
+# Clang 22+ reports __COUNTER__, which doctest's TEST_CASE macros expand to in
+# our files, as a C2y extension under -Wpedantic.
+include(CheckCXXCompilerFlag)
+check_cxx_compiler_flag(-Wc2y-extensions UI_HAS_WC2Y_EXTENSIONS)
+if(UI_HAS_WC2Y_EXTENSIONS)
+  target_compile_options(ui_doctest INTERFACE -Wno-c2y-extensions)
+endif()
 
 # Harness shared by all test executables (doctest main, leak checker).
 add_library(ui_test_support OBJECT

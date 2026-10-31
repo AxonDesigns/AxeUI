@@ -65,7 +65,11 @@ else()
   target_link_libraries(ui_shared PRIVATE ui_platform)
   set_target_properties(ui_shared PROPERTIES OUTPUT_NAME axeui)
   if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
-    target_link_options(ui_shared PRIVATE "LINKER:--exclude-libs,ALL")
+    set(ui_exports_map "${PROJECT_SOURCE_DIR}/cmake/ui_exports.map")
+    target_link_options(ui_shared PRIVATE
+      "LINKER:--exclude-libs,ALL"
+      "LINKER:--version-script=${ui_exports_map}")
+    set_property(TARGET ui_shared APPEND PROPERTY LINK_DEPENDS "${ui_exports_map}")
   endif()
   ui_configure_target(ui_shared)
 endif()

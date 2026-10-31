@@ -1,0 +1,10 @@
+/* Linker version script for libaxeui (Linux/ELF): export the C API only.
+ * Hidden visibility already hides our own code; this also hides template and
+ * inline instantiations that a standard library marks with default
+ * visibility (e.g. libstdc++'s namespace std under Clang). */
+{
+  global:
+    ui_*;
+  local:
+    *;
+};
