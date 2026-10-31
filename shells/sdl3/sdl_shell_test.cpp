@@ -131,8 +131,14 @@ UI_TEST_CASE("SDL shell: windows, input translation, frames, wake-up and quit") 
     CHECK_FALSE(core.surface(b_id).has_value());
 
     // Idle: nothing pending, so pump() sleeps until woken from another thread.
-    while ((**core.surface((*a)->id())).frame_requested) {
+    // First let the shell handle everything already queued (e.g. the events
+    // from destroying window b) and any requested frame: pump() returns as
+    // soon as it has handled an event, which is not what is measured here.
+    SDL_PumpEvents();
+    while (SDL_HasEvents(SDL_EVENT_FIRST, SDL_EVENT_LAST) ||
+           (**core.surface((*a)->id())).frame_requested) {
       CHECK((*shell)->pump());
+      SDL_PumpEvents();
     }
     const std::uint64_t frames = driver.frames_presented();
     const auto start = std::chrono::steady_clock::now();
